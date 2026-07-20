@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alerts — EGI Media</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="app" id="app"></div>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (function () {
+      var tab = 'langsung';
+      var openEmailId = null;
+
+      function typeLabel(type) {
+        return type === 'ringkasan' ? 'Ringkasan Harian' : 'Alert Urgent';
+      }
+
+      function emailsForCompany() {
+        var companyId = EGI.state.activeCompanyId;
+        return (EGI.emails || []).filter(function (email) {
+          return !email.companyIds || email.companyIds.indexOf(companyId) !== -1;
+        }).sort(function (a, b) {
+          return new Date(b.sentAt || 0).getTime() - new Date(a.sentAt || 0).getTime();
+        });
+      }
+
+      function currentEmail() {
+        return emailsForCompany().find(function (email) { return email.id === openEmailId; });
+      }
+
+      function unreadCount(type) {
+        return emailsForCompany().filter(function (email) {
+          return email.type === type && !email.read;
+        }).length;
+      }
+
+      function updateUrl(emailId) {
+        var next = emailId ? 'Alerts.html?email=' + encodeURIComponent(emailId) : 'Alerts.html';
+        window.history.replaceState({}, '', next);
+      }
+
+      function mailRowHtml(email) {
+        return (
+          '<button type="button" class="mail-row' + (!email.read ? ' unread' : '') + '" data-open-email="' + email.id + '">' +
+            '<span class="mail-unread-dot" aria-hidden="true"></span>' +
+            '<div class="mail-row-main">' +
+              '<div class="mail-row-top"><strong>EGI Media Alerts</strong><span>' + EGIApp.escapeHtml(email.sentLabel) + '</span></div>' +
+              '<div class="mail-row-subject"><span class="mail-type-label">' + typeLabel(email.type) + '</span><span class="mail-row-subject-text">' + EGIApp.escapeHtml(email.subject) + '</span></div>' +
+              '<div class="mail-row-preview">' + EGIApp.escapeHtml(email.preview) + '</div>' +
+            '</div>' +
+          '</button>'
+        );
+      }
+
+      function inboxHtml() {
+        var emails = emailsForCompany().filter(function (email) { return email.type === tab; });
+        if (!emails.length) {
+          var emptyType = tab === 'ringkasan' ? 'ringkasan harian' : 'alert urgent';
+          return EGIApp.emptyState(
+            'Belum ada email ' + emptyType + '.',
+            'Email yang dikirim EGI Media akan tersimpan di sini.'
+          );
+        }
+        return '<div class="mail-list">' + emails.map(mailRowHtml).join('') + '</div>';
+      }
+
+      function directEmailHtml(email) {
+        return (
+          '<div class="email-priority-banner">' + EGIApp.priorityBadge(email.priority) + '<span>Alert Urgent</span></div>' +
+          '<div class="email-section">' +
+            '<h3>' + EGIApp.escapeHtml(email.issueTitle) + '</h3>' +
+            '<div class="email-section-label">Perkembangan baru</div>' +
+            '<p>' + EGIApp.escapeHtml(email.change) + '</p>' +
+          '</div>' +
+          '<div class="email-section">' +
+            '<div class="email-section-label">Dampak perubahan</div>' +
+            '<p>' + EGIApp.escapeHtml(email.impact) + '</p>' +
+          '</div>' +
+          '<p class="email-footnote">Berdasarkan perkembangan terbaru dari berita EGI Media.</p>' +
+          '<div class="email-actions"><button type="button" class="btn btn-primary" data-open-issue="' + email.issueId + '">Buka Detail Isu</button></div>'
+        );
+      }
+
+      function dailyEmailHtml(email) {
+        return (
+          '<div class="email-daily-heading">Ringkasan Perkembangan Harian</div>' +
+          '<p class="email-intro">' + EGIApp.escapeHtml(email.intro) + '</p>' +
+          '<div class="daily-email-items">' + email.items.map(function (item, index) {
+            return (
+              '<section class="daily-email-item">' +
+                '<div class="daily-email-item-number">' + (index + 1) + '</div>' +
+                '<div class="daily-email-item-body">' +
+                  EGIApp.priorityBadge(item.priority) +
+                  '<h3>' + EGIApp.escapeHtml(item.title) + '</h3>' +
+                  '<p>' + EGIApp.escapeHtml(item.change) + '</p>' +
+                  '<button type="button" class="email-text-link" data-open-issue="' + item.issueId + '">Buka detail isu</button>' +
+                '</div>' +
+              '</section>'
+            );
+          }).join('') + '</div>' +
+          '<div class="email-actions"><a class="btn btn-secondary" href="Executive-Summary.html">Lihat Ringkasan Eksekutif</a></div>'
+        );
+      }
+
+      function readerHtml(email) {
+        return (
+          '<article class="email-reader">' +
+            '<button type="button" class="email-back" id="email-back">' + EGIIcons.chevron + ' Kembali ke inbox</button>' +
+            '<div class="email-reader-header">' +
+              '<div class="email-sender-avatar">EM</div>' +
+              '<div class="email-sender-copy"><strong>EGI Media Alerts</strong><span>' + EGIApp.escapeHtml(email.sender) + '</span><span>Kepada: ' + EGIApp.escapeHtml(email.recipient) + '</span></div>' +
+              '<time>' + EGIApp.escapeHtml(email.sentLabel) + '</time>' +
+            '</div>' +
+            '<h2 class="email-subject">' + EGIApp.escapeHtml(email.subject) + '</h2>' +
+            '<div class="email-reader-body">' + (email.type === 'ringkasan' ? dailyEmailHtml(email) : directEmailHtml(email)) + '</div>' +
+          '</article>'
+        );
+      }
+
+      function pageContent() {
+        var directUnread = unreadCount('langsung');
+        var dailyUnread = unreadCount('ringkasan');
+        return (
+          '<div class="page-flow email-page">' +
+            '<div class="page-context">' +
+              '<div class="email-tabs" role="tablist">' +
+                '<button type="button" class="email-tab' + (tab === 'langsung' ? ' active' : '') + '" data-tab="langsung" role="tab" aria-selected="' + (tab === 'langsung') + '">Alert Urgent' + (directUnread ? '<span>' + directUnread + '</span>' : '') + '</button>' +
+                '<button type="button" class="email-tab' + (tab === 'ringkasan' ? ' active' : '') + '" data-tab="ringkasan" role="tab" aria-selected="' + (tab === 'ringkasan') + '">Ringkasan Harian' + (dailyUnread ? '<span>' + dailyUnread + '</span>' : '') + '</button>' +
+              '</div>' +
+              '<p class="supporting-text">Arsip email yang dikirim EGI Media ke alamat terdaftar Anda.</p>' +
+            '</div>' +
+            '<div id="email-content">' + (currentEmail() ? readerHtml(currentEmail()) : inboxHtml()) + '</div>' +
+          '</div>'
+        );
+      }
+
+      function openEmail(id, syncUrl) {
+        var email = emailsForCompany().find(function (item) { return item.id === id; });
+        if (!email) return;
+        tab = email.type;
+        openEmailId = id;
+        email.read = true;
+        if (syncUrl) updateUrl(id);
+        EGIApp.refreshNotifUI();
+        render();
+      }
+
+      function render() {
+        document.getElementById('content').innerHTML = pageContent();
+        bindPage();
+      }
+
+      function bindPage() {
+        document.querySelectorAll('[data-tab]').forEach(function (button) {
+          button.addEventListener('click', function () {
+            tab = this.getAttribute('data-tab');
+            openEmailId = null;
+            updateUrl(null);
+            render();
+          });
+        });
+        document.querySelectorAll('[data-open-email]').forEach(function (button) {
+          button.addEventListener('click', function () { openEmail(this.getAttribute('data-open-email'), true); });
+        });
+        var back = document.getElementById('email-back');
+        if (back) {
+          back.addEventListener('click', function () {
+            openEmailId = null;
+            updateUrl(null);
+            render();
+          });
+        }
+        document.querySelectorAll('[data-open-issue]').forEach(function (button) {
+          button.addEventListener('click', function () {
+            EGIApp.openIssueDrawer(this.getAttribute('data-open-issue'));
+          });
+        });
+      }
+
+      document.getElementById('app').innerHTML = EGIApp.renderShell({
+        active: 'alerts',
+        pageTitle: 'Alerts',
+        content: '<div id="email-content"></div>'
+      });
+      EGIApp.bindShell();
+
+      var requestedId = new URLSearchParams(window.location.search).get('email');
+      if (requestedId) {
+        var requestedEmail = emailsForCompany().find(function (email) { return email.id === requestedId; });
+        if (requestedEmail) {
+          tab = requestedEmail.type;
+          openEmailId = requestedEmail.id;
+          requestedEmail.read = true;
+          EGIApp.refreshNotifUI();
+        }
+      }
+
+      window.onCompanyChange = function () {
+        if (openEmailId && !currentEmail()) openEmailId = null;
+        render();
+      };
+
+      render();
+    })();
+  </script>
+</body>
+</html>

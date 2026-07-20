@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Onboarding — EGI Media</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body class="onboarding-page">
+  <div class="onboarding" id="onboarding"></div>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (function () {
+      var STEPS = ['insight', 'alerts', 'reports', 'context'];
+      var step = 'insight';
+      var ctxState = 'idle';
+      var progressTimer = null;
+      var loadingTimer = null;
+
+      var TOUR = {
+        insight: {
+          eyebrow: 'Insight',
+          headline: 'Pahami isu yang paling berdampak bagi bisnis Anda',
+          body: 'EGI Media menyaring berita penting dan menjelaskan dampaknya bagi perusahaan Anda.',
+          exampleLabel: 'Contoh insight'
+        },
+        alerts: {
+          eyebrow: 'Peringatan',
+          headline: 'Terima perkembangan penting tepat waktu',
+          body: 'Dapatkan pemberitahuan saat ada perubahan yang membutuhkan perhatian Anda.',
+          exampleLabel: 'Contoh peringatan'
+        },
+        reports: {
+          eyebrow: 'Laporan',
+          headline: 'Dapatkan laporan otomatis tentang isu penting bagi bisnis Anda',
+          body: 'Laporan berkala disusun otomatis dari perkembangan berita dan isu yang relevan dengan konteks perusahaan Anda.',
+          exampleLabel: 'Contoh laporan otomatis'
+        }
+      };
+
+      function stepIndex(id) {
+        return STEPS.indexOf(id);
+      }
+
+      function typeLabel(type) {
+        return type === 'ringkasan' ? 'Ringkasan Harian' : 'Alert Urgent';
+      }
+
+      function sampleEmail() {
+        return (EGI.emails || []).find(function (e) { return e.type === 'langsung'; }) || EGI.emails[0];
+      }
+
+      function sampleReport() {
+        return EGI.reports[0];
+      }
+
+      function insightExampleHtml() {
+        var issues = (EGI.issues || []).slice(0, 4);
+        return (
+          '<div class="onboarding-example-frame issue-list onboarding-insight-demo">' +
+            issues.map(function (issue, idx) {
+              return EGIApp.issueCardHtml(issue, idx + 1, false);
+            }).join('') +
+          '</div>'
+        );
+      }
+
+      function alertsExampleHtml() {
+        var email = sampleEmail();
+        return (
+          '<div class="onboarding-example-frame">' +
+            '<div class="mail-list onboarding-mail-demo">' +
+              '<div class="mail-row unread" aria-hidden="true">' +
+                '<span class="mail-unread-dot"></span>' +
+                '<div class="mail-row-main">' +
+                  '<div class="mail-row-top"><strong>EGI Media Alerts</strong><span>' + EGIApp.escapeHtml(email.sentLabel) + '</span></div>' +
+                  '<div class="mail-row-subject"><span class="mail-type-label">' + typeLabel(email.type) + '</span><span class="mail-row-subject-text">' + EGIApp.escapeHtml(email.subject) + '</span></div>' +
+                  '<div class="mail-row-preview">' + EGIApp.escapeHtml(email.preview) + '</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="onboarding-alert-snippet">' +
+              EGIApp.priorityBadge(email.priority) +
+              '<p><strong>Perkembangan baru</strong> ' + EGIApp.escapeHtml(email.change) + '</p>' +
+            '</div>' +
+            '<div class="onboarding-alert-channel">' +
+              '<span class="onboarding-alert-channel-icon" aria-hidden="true">' + EGIIcons.fileText + '</span>' +
+              '<span><strong>Email alert</strong><small>Dikirim ke email Anda dan tersimpan di Peringatan.</small></span>' +
+            '</div>' +
+          '</div>'
+        );
+      }
+
+      function reportsExampleHtml() {
+        var r = sampleReport();
+        var content = r.content || {};
+        var issueSection = (content.sections || []).find(function (section) { return section.type === 'issues'; });
+        var impactSection = (content.sections || []).find(function (section) { return section.title === 'Dampak terhadap Perusahaan'; });
+        var watchSection = (content.sections || []).find(function (section) { return section.title.indexOf('Perlu Dipantau') !== -1; });
+        var sourceSection = (content.sections || []).find(function (section) { return section.type === 'sources'; });
+        var issues = (issueSection && issueSection.items || []).slice(0, 3);
+        var impactItems = (impactSection && impactSection.items || []).slice(0, 2);
+        var watchItems = (watchSection && watchSection.items || []).slice(0, 4);
+        var sources = (sourceSection && sourceSection.items || r.sources || []).slice(0, 3);
+        return (
+          '<div class="onboarding-report-document onboarding-report-scroll" aria-hidden="true">' +
+            '<div class="onboarding-report-header">' +
+              '<div><span class="onboarding-report-kicker">Ringkasan otomatis</span><h3>' + EGIApp.escapeHtml(r.title) + '</h3></div>' +
+              '<div class="onboarding-report-status">' + EGIApp.reviewBadge(r.status) + '</div>' +
+            '</div>' +
+            '<div class="onboarding-report-meta"><span>' + r.issueCount + ' isu penting</span><span>Diperbarui ' + EGIApp.escapeHtml(r.updatedAt) + '</span></div>' +
+            '<div class="onboarding-report-summary"><strong>Executive Summary</strong><ul>' +
+              (content.executiveSummary || [r.summary]).map(function (item) { return '<li>' + EGIApp.escapeHtml(item) + '</li>'; }).join('') +
+            '</ul></div>' +
+            '<div class="onboarding-report-section"><strong>Isu Paling Penting Hari Ini</strong>' +
+              issues.map(function (item, idx) {
+                return '<div class="onboarding-report-issue"><div><span>' + (idx + 1) + '</span><strong>' + EGIApp.escapeHtml(item.title) + '</strong></div><small>Prioritas ' + EGIApp.escapeHtml(item.priority) + ' · ' + EGIApp.escapeHtml(item.status) + '</small><p>' + EGIApp.escapeHtml(item.impact) + '</p></div>';
+              }).join('') +
+            '</div>' +
+            '<div class="onboarding-report-section"><strong>Dampak terhadap Perusahaan</strong>' +
+              impactItems.map(function (item) { return '<div class="onboarding-report-category"><b>' + EGIApp.escapeHtml(item.title) + '</b><ul>' + (item.items || []).slice(0, 3).map(function (value) { return '<li>' + EGIApp.escapeHtml(value) + '</li>'; }).join('') + '</ul></div>'; }).join('') +
+            '</div>' +
+            '<div class="onboarding-report-section onboarding-report-watch"><strong>Hal yang Perlu Dipantau Besok</strong><ul>' +
+              watchItems.map(function (item) { return '<li>' + EGIApp.escapeHtml(item) + '</li>'; }).join('') +
+            '</ul></div>' +
+            '<div class="onboarding-report-section"><strong>Daftar Sumber</strong><ul>' +
+              sources.map(function (item) { return '<li>' + EGIApp.escapeHtml(item) + '</li>'; }).join('') +
+            '</ul></div>' +
+          '</div>'
+        );
+      }
+
+      function exampleHtml(id) {
+        if (id === 'insight') return insightExampleHtml();
+        if (id === 'alerts') return alertsExampleHtml();
+        return reportsExampleHtml();
+      }
+
+      function progressHtml() {
+        var labels = [
+          { id: 'insight', label: 'Insight' },
+          { id: 'alerts', label: 'Peringatan' },
+          { id: 'reports', label: 'Laporan' },
+          { id: 'context', label: 'Konteks Bisnis' }
+        ];
+        var current = stepIndex(step);
+        return (
+          '<ol class="onboarding-progress" aria-label="Progres onboarding">' +
+            labels.map(function (item, i) {
+              var cls = 'onboarding-progress-item';
+              if (i < current) cls += ' done';
+              if (i === current) cls += ' active';
+              return (
+                '<li class="' + cls + '">' +
+                  '<span class="onboarding-progress-dot" aria-hidden="true"></span>' +
+                  '<span class="onboarding-progress-label">' + item.label + '</span>' +
+                '</li>'
+              );
+            }).join('') +
+          '</ol>'
+        );
+      }
+
+      function chromeHtml() {
+        return (
+          '<header class="onboarding-chrome">' +
+            '<div class="onboarding-brand" aria-label="EGI Media — News Insight Assistant">' +
+              '<img src="Asset/Logo_EGI-Media.png" alt="EGI Media" class="onboarding-logo-img" />' +
+              '<span class="onboarding-brand-text">' +
+                '<span class="logo-title">News Insight</span>' +
+                '<span class="logo-sub">Assistant</span>' +
+              '</span>' +
+            '</div>' +
+            progressHtml() +
+          '</header>'
+        );
+      }
+
+      function tourHtml(id) {
+        var copy = TOUR[id];
+        var idx = stepIndex(id);
+        var tourClass = id === 'reports' ? ' onboarding-reports-tour' : '';
+        return (
+          '<div class="onboarding-tour' + tourClass + '" data-step="' + id + '">' +
+            '<div class="onboarding-copy">' +
+              '<p class="onboarding-eyebrow">' + copy.eyebrow + '</p>' +
+              '<h1 class="onboarding-headline">' + copy.headline + '</h1>' +
+              '<p class="onboarding-body">' + copy.body + '</p>' +
+              '<div class="onboarding-actions">' +
+                (idx > 0 ? '<button type="button" class="btn btn-secondary" id="onboard-back">Kembali</button>' : '') +
+                '<button type="button" class="btn btn-primary" id="onboard-next">Lanjut</button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="onboarding-example">' +
+              '<p class="onboarding-example-label">' + copy.exampleLabel + '</p>' +
+              '<div class="onboarding-example-surface">' + exampleHtml(id) + '</div>' +
+            '</div>' +
+          '</div>'
+        );
+      }
+
+      function contextIdleHtml() {
+        return (
+          '<div class="ctx-state" data-state-panel="idle">' +
+            '<div class="ctx-method-grid">' +
+              '<label class="ctx-method-card" for="ctx-file-input">' +
+                '<input type="file" id="ctx-file-input" accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden />' +
+                '<span class="ctx-method-icon" aria-hidden="true">' +
+                  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>' +
+                '</span>' +
+                '<strong>Unggah profil perusahaan</strong>' +
+                '<span>PDF, Word, atau PowerPoint</span>' +
+                '<em class="ctx-method-cta">Pilih file</em>' +
+              '</label>' +
+              '<div class="ctx-method-card ctx-method-link">' +
+                '<span class="ctx-method-icon" aria-hidden="true">' +
+                  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
+                '</span>' +
+                '<strong>Gunakan tautan situs</strong>' +
+                '<span>Masukkan URL situs perusahaan Anda</span>' +
+                '<div class="ctx-link-row">' +
+                  '<input type="url" id="ctx-url-input" placeholder="https://perusahaan.com/tentang" />' +
+                  '<button type="button" class="btn btn-primary" id="ctx-url-submit">Buat konteks</button>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>'
+        );
+      }
+
+      function contextLoadingHtml() {
+        return (
+          '<div class="ctx-state" data-state-panel="loading">' +
+            '<div class="ctx-loading-card">' +
+              '<div class="ctx-loading-visual">' +
+                '<div class="ctx-orbit"><span></span><span></span><span></span></div>' +
+                '<div class="ctx-loading-core"></div>' +
+              '</div>' +
+              '<h3 id="ctx-loading-title">Menyusun konteks bisnis…</h3>' +
+              '<p id="ctx-loading-source" class="form-hint">Menganalisis informasi perusahaan</p>' +
+              '<ol class="ctx-loading-steps" id="ctx-loading-steps">' +
+                '<li data-step="1" class="active">Membaca sumber</li>' +
+                '<li data-step="2">Mengidentifikasi informasi penting</li>' +
+                '<li data-step="3">Menyiapkan konteks dashboard</li>' +
+              '</ol>' +
+              '<div class="ctx-progress"><div class="ctx-progress-bar" id="ctx-progress-bar"></div></div>' +
+            '</div>' +
+          '</div>'
+        );
+      }
+
+      function contextDoneHtml() {
+        var ctx = EGI.companyContext;
+        return (
+          '<div class="ctx-state" data-state-panel="done">' +
+            '<div class="ctx-done-banner">' +
+              '<div class="ctx-done-icon" aria-hidden="true">' + EGIIcons.check + '</div>' +
+              '<div>' +
+                '<strong>Konteks bisnis siap ditinjau</strong>' +
+                '<span id="ctx-done-meta">Periksa dan sesuaikan sebelum membuka dashboard.</span>' +
+              '</div>' +
+            '</div>' +
+            '<div class="ctx-source-pill" id="ctx-source-pill"></div>' +
+            '<div class="form-grid" id="ctx-result-fields">' +
+              '<div class="form-group"><label for="ctx-name">Nama perusahaan</label><input id="ctx-name" value="' + EGIApp.escapeHtml(ctx.name) + '" /></div>' +
+              '<div class="form-group"><label for="ctx-industry">Industri / sub-industri</label><input id="ctx-industry" value="' + EGIApp.escapeHtml(ctx.industry) + '" /></div>' +
+              '<div class="form-group full"><label for="ctx-desc">Deskripsi</label><textarea id="ctx-desc">' + EGIApp.escapeHtml(ctx.description) + '</textarea></div>' +
+              '<div class="form-group full"><label for="ctx-products">Produk dan layanan</label><textarea id="ctx-products">' + EGIApp.escapeHtml(ctx.products) + '</textarea></div>' +
+              '<div class="form-group full"><label for="ctx-customers">Pelanggan target</label><textarea id="ctx-customers">' + EGIApp.escapeHtml(ctx.customers) + '</textarea></div>' +
+              '<div class="form-group full"><label for="ctx-regions">Wilayah operasi</label><textarea id="ctx-regions">' + EGIApp.escapeHtml(ctx.regions) + '</textarea></div>' +
+              '<div class="form-group full"><label for="ctx-competitors">Kompetitor</label><textarea id="ctx-competitors">' + EGIApp.escapeHtml(ctx.competitors) + '</textarea></div>' +
+              '<div class="form-group full"><label for="ctx-priorities">Prioritas bisnis</label><textarea id="ctx-priorities">' + EGIApp.escapeHtml(ctx.priorities) + '</textarea></div>' +
+              '<div class="form-group full"><label for="ctx-goals">Tujuan bisnis</label><textarea id="ctx-goals">' + EGIApp.escapeHtml(ctx.goals) + '</textarea></div>' +
+              '<div class="form-group full"><label for="ctx-risks">Risiko yang dipantau</label><textarea id="ctx-risks">' + EGIApp.escapeHtml(ctx.risks) + '</textarea></div>' +
+              '<div class="form-group full"><label for="ctx-topics">Topik pemantauan</label><textarea id="ctx-topics">' + EGIApp.escapeHtml(ctx.topics) + '</textarea></div>' +
+              '<div class="form-group full"><label for="ctx-deps">Ketergantungan bisnis</label><textarea id="ctx-deps">' + EGIApp.escapeHtml(ctx.dependencies) + '</textarea></div>' +
+            '</div>' +
+            '<div class="form-actions onboarding-context-actions">' +
+              '<button type="button" class="btn btn-secondary" id="ctx-upload-again">Unggah ulang</button>' +
+              '<button type="button" class="btn btn-primary" id="ctx-approve">Simpan dan buka dashboard</button>' +
+            '</div>' +
+          '</div>'
+        );
+      }
+
+      function contextPanelHtml() {
+        if (ctxState === 'loading') return contextLoadingHtml();
+        if (ctxState === 'done') return contextDoneHtml();
+        return contextIdleHtml();
+      }
+
+      function contextHtml() {
+        return (
+          '<div class="onboarding-context">' +
+            '<div class="onboarding-context-intro">' +
+              '<h1 class="onboarding-headline">Sesuaikan insight dengan bisnis Anda</h1>' +
+              '<p class="onboarding-body">Tambahkan profil perusahaan untuk mendapatkan insight yang lebih relevan.</p>' +
+            '</div>' +
+            '<div id="ctx-flow" data-state="' + ctxState + '">' + contextPanelHtml() + '</div>' +
+            (ctxState === 'idle'
+              ? '<div class="onboarding-actions onboarding-context-nav">' +
+                  '<button type="button" class="btn btn-secondary" id="onboard-back">Kembali</button>' +
+                '</div>'
+              : '') +
+          '</div>'
+        );
+      }
+
+      function pageHtml() {
+        return (
+          chromeHtml() +
+          '<main class="onboarding-main" id="onboarding-main">' +
+            (step === 'context' ? contextHtml() : tourHtml(step)) +
+          '</main>'
+        );
+      }
+
+      function fillGeneratedContext(sourceLabel) {
+        var ctx = EGI.companyContext;
+        ctx.name = ctx.name || 'Astra International';
+        ctx.industry = 'Holding & Diversifikasi';
+        ctx.description = 'Grup usaha diversifikasi dengan portofolio otomotif, jasa keuangan, alat berat, agribisnis, infrastruktur, dan teknologi digital di Indonesia.';
+        ctx.products = 'Distribusi kendaraan, pembiayaan, alat berat, agribisnis, layanan digital';
+        ctx.customers = 'Konsumen ritel, korporasi B2B, mitra dealer dan distributor';
+        ctx.regions = 'Nasional — fokus Jawa, Sumatera, Kalimantan, dan Sulawesi';
+        ctx.competitors = 'Grup otomotif regional, pemain pembiayaan, kompetitor alat berat';
+        ctx.priorities = 'Efisiensi operasional, ekspansi layanan digital, retensi pelanggan kunci';
+        ctx.goals = 'Pertumbuhan pendapatan berkelanjutan dan diversifikasi portofolio';
+        ctx.risks = 'Siklus industri otomotif, tekanan suku bunga, perubahan regulasi';
+        ctx.topics = 'Tarif impor, regulasi industri, kompetitor regional, harga energi, permintaan pasar';
+        ctx.dependencies = 'Jaringan dealer, rantai pasok komponen, mitra pembiayaan';
+        ctx.source = sourceLabel;
+        ctx.updatedAt = '18 Jul 2026, ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        ctx.updatedBy = 'AI · diverifikasi oleh ' + EGI.user.name;
+      }
+
+      function applyGeneratedFields(sourceLabel) {
+        var ctx = EGI.companyContext;
+        var map = {
+          'ctx-name': ctx.name,
+          'ctx-industry': ctx.industry,
+          'ctx-desc': ctx.description,
+          'ctx-products': ctx.products,
+          'ctx-customers': ctx.customers,
+          'ctx-regions': ctx.regions,
+          'ctx-competitors': ctx.competitors,
+          'ctx-priorities': ctx.priorities,
+          'ctx-goals': ctx.goals,
+          'ctx-risks': ctx.risks,
+          'ctx-topics': ctx.topics,
+          'ctx-deps': ctx.dependencies
+        };
+        Object.keys(map).forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.value = map[id];
+        });
+        var pill = document.getElementById('ctx-source-pill');
+        if (pill) {
+          pill.innerHTML =
+            '<span class="ctx-source-label">Sumber diproses</span>' +
+            '<strong>' + EGIApp.escapeHtml(sourceLabel) + '</strong>';
+        }
+        var meta = document.getElementById('ctx-done-meta');
+        if (meta) {
+          meta.textContent = 'Disusun otomatis · ' + ctx.updatedAt + ' · Siap ditinjau sebelum disetujui';
+        }
+      }
+
+      function startProcessing(sourceLabel) {
+        ctxState = 'loading';
+        render();
+
+        var steps = document.querySelectorAll('#ctx-loading-steps li');
+        var bar = document.getElementById('ctx-progress-bar');
+        var sourceEl = document.getElementById('ctx-loading-source');
+        if (sourceEl) sourceEl.textContent = 'Memproses ' + sourceLabel;
+
+        var progress = 8;
+        var stepIdx = 0;
+        if (bar) bar.style.width = progress + '%';
+        steps.forEach(function (s, i) {
+          s.classList.toggle('active', i === 0);
+          s.classList.remove('done');
+        });
+
+        clearInterval(progressTimer);
+        clearTimeout(loadingTimer);
+
+        progressTimer = setInterval(function () {
+          progress = Math.min(progress + 4 + Math.random() * 6, 92);
+          if (bar) bar.style.width = progress + '%';
+          var nextStep = progress > 35 ? 1 : 0;
+          if (progress > 65) nextStep = 2;
+          if (nextStep !== stepIdx && steps[stepIdx]) {
+            steps[stepIdx].classList.remove('active');
+            steps[stepIdx].classList.add('done');
+            stepIdx = nextStep;
+            if (steps[stepIdx]) steps[stepIdx].classList.add('active');
+          }
+        }, 280);
+
+        loadingTimer = setTimeout(function () {
+          clearInterval(progressTimer);
+          steps.forEach(function (s) {
+            s.classList.remove('active');
+            s.classList.add('done');
+          });
+          if (bar) bar.style.width = '100%';
+          setTimeout(function () {
+            fillGeneratedContext(sourceLabel);
+            ctxState = 'done';
+            render();
+            applyGeneratedFields(sourceLabel);
+            EGIApp.toast('Konteks bisnis berhasil disusun', 'success');
+          }, 350);
+        }, 2800);
+      }
+
+      function readContextForm() {
+        var ctx = EGI.companyContext;
+        ctx.name = (document.getElementById('ctx-name') || {}).value || ctx.name;
+        ctx.industry = (document.getElementById('ctx-industry') || {}).value || ctx.industry;
+        ctx.description = (document.getElementById('ctx-desc') || {}).value || ctx.description;
+        ctx.products = (document.getElementById('ctx-products') || {}).value || ctx.products;
+        ctx.customers = (document.getElementById('ctx-customers') || {}).value || ctx.customers;
+        ctx.regions = (document.getElementById('ctx-regions') || {}).value || ctx.regions;
+        ctx.competitors = (document.getElementById('ctx-competitors') || {}).value || ctx.competitors;
+        ctx.priorities = (document.getElementById('ctx-priorities') || {}).value || ctx.priorities;
+        ctx.goals = (document.getElementById('ctx-goals') || {}).value || ctx.goals;
+        ctx.risks = (document.getElementById('ctx-risks') || {}).value || ctx.risks;
+        ctx.topics = (document.getElementById('ctx-topics') || {}).value || ctx.topics;
+        ctx.dependencies = (document.getElementById('ctx-deps') || {}).value || ctx.dependencies;
+        ctx.updatedBy = EGI.user.name;
+        ctx.updatedAt = '18 Jul 2026, ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      }
+
+      function goNext() {
+        var i = stepIndex(step);
+        if (i < STEPS.length - 1) {
+          step = STEPS[i + 1];
+          if (step === 'context') ctxState = 'idle';
+          render();
+        }
+      }
+
+      function goBack() {
+        var i = stepIndex(step);
+        if (i <= 0) return;
+        if (step === 'context' && ctxState !== 'idle') {
+          clearInterval(progressTimer);
+          clearTimeout(loadingTimer);
+          ctxState = 'idle';
+          render();
+          return;
+        }
+        step = STEPS[i - 1];
+        render();
+      }
+
+      function bindPage() {
+        var next = document.getElementById('onboard-next');
+        var back = document.getElementById('onboard-back');
+        if (next) next.addEventListener('click', goNext);
+        if (back) back.addEventListener('click', goBack);
+
+        var fileInput = document.getElementById('ctx-file-input');
+        if (fileInput) {
+          fileInput.addEventListener('change', function () {
+            var file = this.files && this.files[0];
+            if (!file) return;
+            var ok = /\.(pdf|doc|docx|ppt|pptx)$/i.test(file.name);
+            if (!ok) {
+              EGIApp.toast('File harus PDF, Word, atau PowerPoint', 'error');
+              this.value = '';
+              return;
+            }
+            startProcessing(file.name + ' · ' + Math.max(1, Math.round(file.size / 1024)) + ' KB');
+            this.value = '';
+          });
+        }
+
+        var urlSubmit = document.getElementById('ctx-url-submit');
+        if (urlSubmit) {
+          urlSubmit.addEventListener('click', function () {
+            var url = (document.getElementById('ctx-url-input').value || '').trim();
+            if (!url) {
+              EGIApp.toast('Masukkan URL profil perusahaan', 'error');
+              return;
+            }
+            if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+            startProcessing(url);
+          });
+        }
+
+        var uploadAgain = document.getElementById('ctx-upload-again');
+        if (uploadAgain) {
+          uploadAgain.addEventListener('click', function () {
+            ctxState = 'idle';
+            render();
+          });
+        }
+
+        var approve = document.getElementById('ctx-approve');
+        if (approve) {
+          approve.addEventListener('click', function () {
+            readContextForm();
+            EGI.state.onboardingComplete = true;
+            if (typeof EGIApp.persistState === 'function') EGIApp.persistState();
+            EGIApp.toast('Konteks disimpan. Membuka dashboard…', 'success');
+            setTimeout(function () {
+              window.location.href = 'Executive-Summary.html';
+            }, 700);
+          });
+        }
+      }
+
+      function render() {
+        document.getElementById('onboarding').innerHTML = pageHtml();
+        bindPage();
+        var main = document.getElementById('onboarding-main');
+        if (main) {
+          main.classList.remove('onboarding-enter');
+          void main.offsetWidth;
+          main.classList.add('onboarding-enter');
+        }
+      }
+
+      render();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reports — EGI Media</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="app" id="app"></div>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (function () {
+      var tab = 'harian';
+      var reviewFilter = 'semua';
+
+      function filteredReports() {
+        return EGI.reports.filter(function (r) {
+          if (r.type !== tab) return false;
+          if (reviewFilter !== 'semua' && r.status !== reviewFilter) return false;
+          return true;
+        });
+      }
+
+      function renderReports() {
+        var list = document.getElementById('report-list');
+        var reports = filteredReports();
+
+        if (!reports.length) {
+          list.innerHTML = EGIApp.emptyState(
+            'Belum ada laporan pada filter ini.',
+            'Ubah tab periode atau status review untuk melihat laporan lain.'
+          );
+          return;
+        }
+
+        list.innerHTML = reports.map(function (r) {
+          var typeLabel = { harian: 'Harian', mingguan: 'Mingguan', bulanan: 'Bulanan' }[r.type] || r.type;
+          return (
+            '<button type="button" class="report-row" data-report-id="' + r.id + '">' +
+              '<div class="report-row-period">' +
+                '<span class="report-period">' + typeLabel + '</span>' +
+              '</div>' +
+              '<div class="report-row-main">' +
+                '<div class="report-title">' + EGIApp.escapeHtml(r.title) + '</div>' +
+                '<div class="report-desc">' + EGIApp.escapeHtml(r.summary) + '</div>' +
+              '</div>' +
+              '<div class="report-meta">' +
+                EGIApp.reviewBadge(r.status) +
+                '<span>' + r.issueCount + ' isu</span><span>Diperbarui ' + r.updatedAt + '</span>' +
+              '</div>' +
+            '</button>'
+          );
+        }).join('');
+
+        list.querySelectorAll('.report-row').forEach(function (card) {
+          card.addEventListener('click', function () {
+            openReport(this.getAttribute('data-report-id'));
+          });
+        });
+      }
+
+      function comparisonHtml(report) {
+        if (!report.comparison) return '';
+
+        if (report.type === 'mingguan') {
+          var c = report.comparison;
+          var delta = c.highPriority.current - c.highPriority.previous;
+          return (
+            '<div class="report-section">' +
+              '<h3>Perbandingan dengan ' + c.prevLabel + '</h3>' +
+              '<div class="compare-grid">' +
+                '<div class="compare-box"><h4>Isu baru</h4><strong>' + c.newIssues + '</strong></div>' +
+                '<div class="compare-box"><h4>Memburuk / Membaik</h4><strong>' + c.worsened + ' / ' + c.improved + '</strong></div>' +
+                '<div class="compare-box"><h4>Selesai</h4><strong>' + c.closed + '</strong></div>' +
+                '<div class="compare-box"><h4>Prioritas tinggi</h4><strong>' + c.highPriority.current +
+                  '</strong><span class="' + (delta > 0 ? 'compare-up' : 'compare-down') + '">' +
+                  (delta > 0 ? '↑' : delta < 0 ? '↓' : '→') + ' dari ' + c.highPriority.previous + ' minggu lalu</span></div>' +
+              '</div>' +
+            '</div>'
+          );
+        }
+
+        if (report.type === 'bulanan') {
+          var m = report.comparison;
+          return (
+            '<div class="report-section">' +
+              '<h3>Perbandingan dengan ' + m.prevLabel + '</h3>' +
+              '<div class="compare-grid">' +
+                '<div class="compare-box"><h4>Isu berulang</h4><strong>' + m.recurring + '</strong></div>' +
+                '<div class="compare-box"><h4>Risiko naik / turun</h4><strong>' + m.riskUp + ' / ' + m.riskDown + '</strong></div>' +
+              '</div>' +
+              '<ul style="margin-top:12px;list-style:disc;padding-left:18px;display:flex;flex-direction:column;gap:6px">' +
+                '<li><strong>Pasar:</strong> ' + m.market + '</li>' +
+                '<li><strong>Kompetitor:</strong> ' + m.competitor + '</li>' +
+                '<li><strong>Regulasi:</strong> ' + m.regulation + '</li>' +
+              '</ul>' +
+            '</div>'
+          );
+        }
+        return '';
+      }
+
+      function reportBullets(items) {
+        if (!items || !items.length) return '<p class="muted-line">Tidak ada catatan.</p>';
+        return '<ul>' + items.map(function (item) { return '<li>' + EGIApp.escapeHtml(item) + '</li>'; }).join('') + '</ul>';
+      }
+
+      function reportCategoryHtml(item) {
+        return '<div class="report-category-block"><h4>' + EGIApp.escapeHtml(item.title) + '</h4>' +
+          reportBullets(item.items || []) +
+          (item.impact ? '<p class="report-category-impact"><strong>Dampak:</strong> ' + EGIApp.escapeHtml(item.impact) + '</p>' : '') +
+        '</div>';
+      }
+
+      function structuredReportSectionHtml(section, report) {
+        var html = '<div class="report-section"><h3>' + EGIApp.escapeHtml(section.title) + '</h3>';
+        if (section.type === 'bullets') html += reportBullets(section.items);
+        if (section.type === 'sources') html += EGIApp.reportSourceHtml(report.sources || section.items || []);
+        if (section.type === 'paragraphs') {
+          html += (section.items || []).map(function (item) {
+            return '<div class="report-paragraph-block"><h4>' + EGIApp.escapeHtml(item.title) + '</h4><p>' + EGIApp.escapeHtml(item.text) + '</p></div>';
+          }).join('');
+        }
+        if (section.type === 'categories') html += (section.items || []).map(reportCategoryHtml).join('');
+        if (section.type === 'issues') {
+          html += (section.items || []).map(function (item, idx) {
+            return '<article class="report-issue-block">' +
+              '<div class="report-issue-heading"><span>' + (idx + 1) + '</span><h4>' + EGIApp.escapeHtml(item.title) + '</h4></div>' +
+              '<div class="report-issue-meta"><strong>Prioritas ' + EGIApp.escapeHtml(item.priority) + '</strong><span>' + EGIApp.escapeHtml(item.status) + '</span></div>' +
+              '<dl>' +
+                '<div><dt>Apa yang terjadi</dt><dd>' + EGIApp.escapeHtml(item.whatHappened) + '</dd></div>' +
+                '<div><dt>Mengapa penting bagi perusahaan</dt><dd>' + EGIApp.escapeHtml(item.whyImportant) + '</dd></div>' +
+                '<div><dt>Dampak utama</dt><dd>' + EGIApp.escapeHtml(item.impact) + '</dd></div>' +
+                '<div><dt>Risiko utama</dt><dd>' + EGIApp.escapeHtml(item.risk) + '</dd></div>' +
+                '<div><dt>Hal yang perlu dipantau</dt><dd>' + reportBullets(item.watch) + '</dd></div>' +
+              '</dl>' +
+            '</article>';
+          }).join('');
+        }
+        if (section.type === 'comparison' || section.type === 'metrics') {
+          html += '<div class="report-data-table"><table><thead><tr>' + (section.columns || []).map(function (col) { return '<th>' + EGIApp.escapeHtml(col) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+            (section.rows || []).map(function (row) { return '<tr>' + row.map(function (cell) { return '<td>' + EGIApp.escapeHtml(cell) + '</td>'; }).join('') + '</tr>'; }).join('') +
+          '</tbody></table></div>';
+          if (section.summary) html += '<div class="report-inline-subsection"><h4>Kesimpulan Utama</h4>' + reportBullets(section.summary) + '</div>';
+          if (section.changes) html += '<div class="report-change-grid">' +
+            '<div><h4>Apa yang Baru</h4>' + reportBullets(section.changes.new) + '</div>' +
+            '<div><h4>Apa yang Memburuk</h4>' + reportBullets(section.changes.worsened) + '</div>' +
+            '<div><h4>Apa yang Membaik</h4>' + reportBullets(section.changes.improved) + '</div>' +
+          '</div>';
+        }
+        if (section.type === 'changes') {
+          if (section.changes) html += '<div class="report-change-grid">' +
+            '<div><h4>Apa yang Baru</h4>' + reportBullets(section.changes.new) + '</div>' +
+            '<div><h4>Apa yang Memburuk</h4>' + reportBullets(section.changes.worsened) + '</div>' +
+            '<div><h4>Apa yang Membaik</h4>' + reportBullets(section.changes.improved) + '</div>' +
+          '</div>';
+          if (section.summary) html += '<div class="report-inline-subsection"><h4>Pergeseran Prioritas</h4>' + reportBullets(section.summary) + '</div>';
+        }
+        if (section.type === 'risk-opportunity') {
+          html += '<div class="report-risk-opportunity"><div><h4>Risiko Utama</h4>' + reportBullets(section.risks) + '</div><div><h4>Peluang</h4>' + reportBullets(section.opportunities) + '</div></div>';
+          if (section.assumptions) html += '<div class="report-inline-subsection"><h4>Asumsi Analisis</h4>' + reportBullets(section.assumptions) + '</div>';
+        }
+        if (section.type === 'strategic-risks') {
+          html += (section.items || []).map(function (item) {
+            return '<div class="report-strategic-risk"><div class="report-strategic-risk-top"><h4>' + EGIApp.escapeHtml(item.title) + '</h4><strong>' + EGIApp.escapeHtml(item.level) + '</strong></div><p><b>Dasar:</b> ' + EGIApp.escapeHtml(item.basis) + '</p><h5>Kemungkinan dampak</h5>' + reportBullets(item.impacts) + '</div>';
+          }).join('');
+          if (section.assumptions) html += '<div class="report-inline-subsection"><h4>Asumsi Analisis</h4>' + reportBullets(section.assumptions) + '</div>';
+        }
+        return html + '</div>';
+      }
+
+      function structuredReportBody(report) {
+        var content = report.content;
+        return '<div class="report-section"><h3>Executive Summary</h3>' + reportBullets(content.executiveSummary) + '</div>' +
+          (content.sections || []).map(function (section) { return structuredReportSectionHtml(section, report); }).join('');
+      }
+
+      function openReport(reportId) {
+        var report = EGI.reports.find(function (r) { return r.id === reportId; });
+        if (!report) return;
+
+        var canReview = report.status === 'draft' || report.status === 'in-review' || report.status === 'needs-review';
+        var footerBtns =
+          '<button type="button" class="btn btn-secondary" id="report-save">' + EGIIcons.bookmark + ' Simpan</button>' +
+          '<button type="button" class="btn btn-primary" id="report-close">Tutup</button>';
+
+        if (report.status === 'approved') {
+          footerBtns =
+            '<button type="button" class="btn btn-secondary" id="report-save">' + EGIIcons.bookmark + ' Simpan</button>' +
+            '<button type="button" class="btn btn-primary" id="report-share">Bagikan ke manajemen</button>' +
+            '<button type="button" class="btn btn-ghost" id="report-close">Tutup</button>';
+        }
+
+        var reviewBlock = canReview
+          ? '<div class="report-section review-tools">' +
+              '<h3>Tinjauan (opsional)</h3>' +
+              '<p class="form-hint" style="margin-bottom:10px">Aksi ini biasanya dilakukan analyst atau reviewer berwenang sebelum laporan dibagikan.</p>' +
+              '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+                '<button type="button" class="btn btn-secondary btn-sm" id="report-edit">Perbaiki ringkasan</button>' +
+                '<button type="button" class="btn btn-secondary btn-sm" id="report-approve">Setujui laporan</button>' +
+              '</div>' +
+            '</div>'
+          : '';
+
+        var reportContent = report.content
+          ? structuredReportBody(report)
+          : '<div class="report-section"><h3>Ringkasan eksekutif</h3><p>' + EGIApp.escapeHtml(report.summary) + '</p></div>' +
+            '<div class="report-section"><h3>Isu utama / sorotan</h3>' + EGIApp.listHtml(report.highlights) + '</div>' +
+            comparisonHtml(report) +
+            '<div class="report-section"><h3>Risiko</h3>' + EGIApp.listHtml(report.risks) + '</div>' +
+            '<div class="report-section"><h3>Peluang</h3>' + EGIApp.listHtml(report.opportunities) + '</div>' +
+            '<div class="report-section"><h3>Hal yang perlu dipantau</h3>' + EGIApp.listHtml(report.watch) + '</div>' +
+            '<div class="report-section"><h3>Sumber</h3>' + EGIApp.reportSourceHtml(report.sources) + '</div>';
+
+        EGIApp.openModal({
+          title: report.title,
+          subtitle: EGIApp.reviewBadge(report.status) +
+            ' <span class="timestamp" style="margin-left:10px">' + report.periodLabel + ' · ' + report.issueCount + ' isu · Diperbarui ' + report.updatedAt + '</span>',
+          body: reportContent +
+            '<div class="report-section"><h3>Catatan aktivitas</h3>' +
+              '<ul style="list-style:disc;padding-left:18px;font-size:13.5px;color:var(--text-muted);display:flex;flex-direction:column;gap:4px">' +
+                '<li>Dibuat otomatis oleh sistem — ' + report.updatedAt + '</li>' +
+                '<li>Status saat ini: ' + ({ draft: 'Draf', 'in-review': 'Ditinjau', approved: 'Disetujui', shared: 'Dibagikan', 'needs-review': 'Perlu ditinjau' }[report.status] || report.status) + '</li>' +
+                (canReview ? '<li>Menunggu peninjauan sebelum dibagikan</li>' : '') +
+              '</ul></div>' +
+            reviewBlock,
+          footer: footerBtns
+        });
+
+        document.getElementById('report-close').onclick = EGIApp.closeModal;
+
+        document.querySelectorAll('[data-report-source]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var idx = parseInt(this.getAttribute('data-report-source'), 10);
+            EGIApp.openSourcePreview({
+              title: report.sources[idx],
+              date: report.periodLabel,
+              author: 'Redaksi EGI Media',
+              claim: 'Mendukung insight pada laporan ' + report.title
+            });
+          });
+        });
+
+        var saveBtn = document.getElementById('report-save');
+        if (saveBtn) {
+          saveBtn.onclick = function () {
+            var idx = EGI.saved.reports.indexOf(report.id);
+            if (idx === -1) {
+              EGI.saved.reports.push(report.id);
+              EGIApp.toast('Laporan disimpan', 'success');
+            } else {
+              EGI.saved.reports.splice(idx, 1);
+              EGIApp.toast('Laporan dihapus dari Tersimpan');
+            }
+          };
+        }
+
+        var editBtn = document.getElementById('report-edit');
+        if (editBtn) {
+          editBtn.onclick = function () {
+            var current = report.summary;
+            EGIApp.openModal({
+              title: 'Perbaiki ringkasan laporan',
+              small: false,
+              body: '<div class="form-group full"><label for="edit-summary">Ringkasan eksekutif</label>' +
+                '<textarea id="edit-summary" rows="5">' + EGIApp.escapeHtml(current) + '</textarea>' +
+                '<span class="form-hint">Perubahan dicatat di catatan aktivitas. Jika laporan sudah disetujui, status kembali menjadi Perlu ditinjau.</span></div>',
+              footer:
+                '<button type="button" class="btn btn-secondary" id="cancel-edit">Batal</button>' +
+                '<button type="button" class="btn btn-primary" id="save-edit">Simpan perubahan</button>'
+            });
+            document.getElementById('cancel-edit').onclick = function () { openReport(reportId); };
+            document.getElementById('save-edit').onclick = function () {
+              report.summary = document.getElementById('edit-summary').value.trim() || report.summary;
+              if (report.content) report.content.executiveSummary = [report.summary];
+              if (report.status === 'approved' || report.status === 'shared') report.status = 'needs-review';
+              else if (report.status === 'draft') report.status = 'in-review';
+              EGIApp.toast('Ringkasan diperbarui', 'success');
+              renderReports();
+              openReport(reportId);
+            };
+          };
+        }
+
+        var approveBtn = document.getElementById('report-approve');
+        if (approveBtn) {
+          approveBtn.onclick = function () {
+            report.status = 'approved';
+            EGIApp.toast('Laporan disetujui', 'success');
+            renderReports();
+            openReport(reportId);
+          };
+        }
+
+        var shareBtn = document.getElementById('report-share');
+        if (shareBtn) {
+          shareBtn.onclick = function () {
+            report.status = 'shared';
+            EGIApp.toast('Laporan dibagikan ke jajaran manajemen', 'success');
+            renderReports();
+            openReport(reportId);
+          };
+        }
+      }
+
+      var REPORT_TABS = [
+        { id: 'harian', label: 'Harian', desc: 'Perkembangan terbaru dan isu prioritas' },
+        { id: 'mingguan', label: 'Mingguan', desc: 'Perbandingan dengan minggu sebelumnya' },
+        { id: 'bulanan', label: 'Bulanan', desc: 'Tren strategis dibanding bulan sebelumnya' }
+      ];
+
+      var hints = {
+        harian: 'Perkembangan terbaru, isu prioritas, dampak, dan hal yang perlu dipantau.',
+        mingguan: 'Perbandingan dengan minggu sebelumnya: isu baru, memburuk/membaik, selesai, dan pergeseran risiko.',
+        bulanan: 'Tren strategis dibanding bulan sebelumnya: pola berulang, risiko, pasar, kompetitor, dan peluang.'
+      };
+
+      var reportTabControl = null;
+
+      function pageContent() {
+        return (
+          '<div class="page-flow">' +
+            '<div class="page-context">' +
+              '<div class="toolbar">' +
+                EGIApp.filterDropdownHtml({
+              id: 'report-tabs',
+              kicker: 'Jenis laporan',
+              headerTitle: 'Pilih jenis laporan',
+              headerHint: 'Harian, mingguan, atau bulanan',
+              valueAttr: 'data-tab',
+              selected: tab,
+              icon: EGIIcons.file,
+              options: REPORT_TABS
+                }) +
+              '</div>' +
+              '<div class="filter-row">' +
+                '<label class="form-hint" for="review-filter">Status peninjauan</label>' +
+                '<select class="select-sm" id="review-filter">' +
+                  '<option value="semua">Semua status</option>' +
+                  '<option value="draft">Draf</option>' +
+                  '<option value="in-review">Ditinjau</option>' +
+                  '<option value="approved">Disetujui</option>' +
+                  '<option value="shared">Dibagikan</option>' +
+                  '<option value="needs-review">Perlu ditinjau</option>' +
+                '</select>' +
+              '</div>' +
+              '<p class="supporting-text" id="report-hint">' + hints[tab] + '</p>' +
+            '</div>' +
+            '<div class="report-list" id="report-list"></div>' +
+          '</div>'
+        );
+      }
+
+      document.getElementById('app').innerHTML = EGIApp.renderShell({
+        active: 'reports',
+        pageTitle: 'Reports',
+        content: pageContent()
+      });
+      EGIApp.bindShell();
+
+      reportTabControl = EGIApp.bindFilterDropdown({
+        id: 'report-tabs',
+        valueAttr: 'data-tab',
+        options: REPORT_TABS,
+        onChange: function (value) {
+          tab = value;
+          document.getElementById('report-hint').textContent = hints[tab];
+          renderReports();
+        }
+      });
+
+      document.getElementById('review-filter').addEventListener('change', function () {
+        reviewFilter = this.value;
+        renderReports();
+      });
+
+      window.onCompanyChange = function () {
+        renderReports();
+      };
+
+      renderReports();
+
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('open')) {
+        var rep = EGI.reports.find(function (r) { return r.id === params.get('open'); });
+        if (rep) {
+          tab = rep.type;
+          if (reportTabControl) reportTabControl.setSelected(tab);
+          document.getElementById('report-hint').textContent = hints[tab];
+          renderReports();
+          setTimeout(function () { openReport(rep.id); }, 150);
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings — EGI Media</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="app" id="app"></div>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (function () {
+      var dirty = false;
+      var activeSection = 'profile';
+
+      function markDirty() { dirty = true; }
+
+      function switchSection(id, force) {
+        if (dirty && !force) {
+          EGIApp.openModal({
+            title: 'Unsaved changes',
+            small: true,
+            body: '<p>You have unsaved changes. What would you like to do?</p>',
+            footer:
+              '<button type="button" class="btn btn-secondary" id="discard-changes">Discard changes</button>' +
+              '<button type="button" class="btn btn-ghost" id="stay-here">Cancel</button>' +
+              '<button type="button" class="btn btn-primary" id="save-then-leave">Save changes</button>'
+          });
+          document.getElementById('stay-here').onclick = EGIApp.closeModal;
+          document.getElementById('discard-changes').onclick = function () {
+            dirty = false;
+            EGIApp.closeModal();
+            switchSection(id, true);
+          };
+          document.getElementById('save-then-leave').onclick = function () {
+            saveCurrentSection();
+            dirty = false;
+            EGIApp.closeModal();
+            switchSection(id, true);
+          };
+          return;
+        }
+
+        activeSection = id;
+        document.querySelectorAll('.settings-nav-item').forEach(function (btn) {
+          btn.classList.toggle('active', btn.getAttribute('data-section') === id);
+        });
+        document.querySelectorAll('.settings-section').forEach(function (sec) {
+          sec.classList.toggle('active', sec.id === 'section-' + id);
+        });
+        history.replaceState(null, '', '#' + id);
+      }
+
+      function saveCurrentSection() {
+        if (activeSection === 'profile') {
+          EGI.user.name = document.getElementById('profile-name').value;
+          EGI.user.title = document.getElementById('profile-title').value;
+          EGI.user.email = document.getElementById('profile-email').value;
+          EGI.user.timezone = document.getElementById('profile-tz').value;
+          EGI.user.language = document.getElementById('profile-lang').value;
+        }
+        if (activeSection === 'company') {
+          var ctx = EGI.companyContext;
+          var nameEl = document.getElementById('ctx-name');
+          if (!nameEl) {
+            dirty = false;
+            EGIApp.toast('Upload a source first to generate context', 'error');
+            return;
+          }
+          ctx.name = nameEl.value;
+          ctx.description = document.getElementById('ctx-desc').value;
+          ctx.industry = document.getElementById('ctx-industry').value;
+          ctx.products = document.getElementById('ctx-products').value;
+          ctx.customers = document.getElementById('ctx-customers').value;
+          ctx.regions = document.getElementById('ctx-regions').value;
+          ctx.competitors = document.getElementById('ctx-competitors').value;
+          ctx.priorities = document.getElementById('ctx-priorities').value;
+          ctx.goals = document.getElementById('ctx-goals').value;
+          ctx.risks = document.getElementById('ctx-risks').value;
+          ctx.topics = document.getElementById('ctx-topics').value;
+          ctx.dependencies = document.getElementById('ctx-deps').value;
+          ctx.updatedAt = '18 Jul 2026, ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+          ctx.updatedBy = EGI.user.name + ' (CEO)';
+          var updatedEl = document.getElementById('ctx-updated');
+          if (updatedEl) updatedEl.textContent = 'Last updated ' + ctx.updatedAt + ' by ' + ctx.updatedBy;
+          var doneMeta = document.getElementById('ctx-done-meta');
+          if (doneMeta) doneMeta.textContent = 'Saved · ' + ctx.updatedAt + ' · Source: ' + ctx.source;
+        }
+        if (activeSection === 'notifications') {
+          EGI.notifications.sendTime = document.getElementById('notif-time').value;
+          EGI.notifications.timezone = document.getElementById('notif-tz').value;
+        }
+        dirty = false;
+        EGIApp.toast('Changes saved', 'success');
+      }
+
+      function renderTeam() {
+        var tbody = document.getElementById('team-tbody');
+        tbody.innerHTML = EGI.team.map(function (u) {
+          var initials = u.name.split(' ').map(function (p) { return p[0]; }).slice(0, 2).join('');
+          return (
+            '<tr>' +
+              '<td><div class="user-cell"><span class="user-avatar">' + initials + '</span><div><strong style="display:block;color:var(--text-strong)">' +
+                EGIApp.escapeHtml(u.name) + '</strong><span style="font-size:12px;color:var(--text-muted)">' + u.email + '</span></div></div></td>' +
+              '<td><span class="role-chip">' + u.role + '</span></td>' +
+              '<td><span class="status-chip' + (u.status === 'inactive' ? ' inactive' : '') + '">' +
+                (u.status === 'active' ? 'Active' : 'Inactive') + '</span></td>' +
+              '<td>' + u.lastActive + '</td>' +
+              '<td><button type="button" class="btn btn-ghost btn-sm" data-team-action="' + u.id + '">Manage</button></td>' +
+            '</tr>'
+          );
+        }).join('');
+
+        tbody.querySelectorAll('[data-team-action]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var user = EGI.team.find(function (u) { return u.id === btn.getAttribute('data-team-action'); });
+            EGIApp.openModal({
+              title: 'Manage access — ' + user.name,
+              small: true,
+              body:
+                '<div class="form-group"><label>Role</label>' +
+                '<select id="edit-role">' +
+                  ['CEO/C-Level', 'Director', 'Analyst', 'Admin'].map(function (r) {
+                    return '<option' + (r === user.role ? ' selected' : '') + '>' + r + '</option>';
+                  }).join('') +
+                '</select></div>' +
+                '<p class="form-hint" style="margin-top:8px">Role changes are recorded in the activity log.</p>',
+              footer:
+                '<button type="button" class="btn btn-danger" id="revoke-user">Revoke access</button>' +
+                '<button type="button" class="btn btn-secondary" id="cancel-team">Cancel</button>' +
+                '<button type="button" class="btn btn-primary" id="save-team">Save</button>'
+            });
+            document.getElementById('cancel-team').onclick = EGIApp.closeModal;
+            document.getElementById('save-team').onclick = function () {
+              user.role = document.getElementById('edit-role').value;
+              EGIApp.toast('Role updated for ' + user.name, 'success');
+              EGIApp.closeModal();
+              renderTeam();
+            };
+            document.getElementById('revoke-user').onclick = function () {
+              user.status = 'inactive';
+              EGIApp.toast('Access revoked for ' + user.name);
+              EGIApp.closeModal();
+              renderTeam();
+            };
+          });
+        });
+      }
+
+      function renderBilling() {
+        var b = EGI.billing;
+        document.getElementById('billing-plan').textContent = b.plan;
+        document.getElementById('billing-status').textContent = b.status;
+        document.getElementById('billing-renewal').textContent = b.renewalDate;
+        document.getElementById('billing-payment').textContent = b.paymentMethod;
+        document.getElementById('billing-seats').textContent = b.seats;
+        document.getElementById('billing-price').textContent = b.price;
+        document.getElementById('invoice-list').innerHTML = b.invoices.map(function (inv) {
+          return (
+            '<div class="invoice-row">' +
+              '<div><strong>' + inv.id + '</strong><div class="form-hint">' + inv.date + '</div></div>' +
+              '<div style="text-align:right"><strong>' + inv.amount + '</strong><div class="form-hint">' + inv.status + '</div></div>' +
+            '</div>'
+          );
+        }).join('');
+      }
+
+      function startRenewal() {
+        var b = EGI.billing;
+        EGIApp.openModal({
+          title: 'Renew subscription',
+          body:
+            '<p class="modal-lead">Confirm renewal of your plan.</p>' +
+            '<div class="billing-card" style="margin-bottom:0">' +
+              '<div class="billing-plan" style="font-size:20px">' + b.plan + '</div>' +
+              '<dl class="billing-meta">' +
+                '<div><dt>Total cost</dt><dd>' + b.price + '</dd></div>' +
+                '<div><dt>Payment method</dt><dd>' + b.paymentMethod + '</dd></div>' +
+                '<div><dt>New period</dt><dd>18 Aug – 18 Sep 2026</dd></div>' +
+              '</dl>' +
+            '</div>',
+          footer:
+            '<button type="button" class="btn btn-secondary" id="cancel-renew">Cancel</button>' +
+            '<button type="button" class="btn btn-primary" id="confirm-renew">Confirm payment</button>'
+        });
+        document.getElementById('cancel-renew').onclick = EGIApp.closeModal;
+        document.getElementById('confirm-renew').onclick = function () {
+          EGIApp.openModal({
+            title: 'Processing payment…',
+            small: true,
+            body: '<p>Please wait a moment. Do not close this window.</p>',
+            footer: ''
+          });
+          setTimeout(function () {
+            b.renewalDate = '18 September 2026';
+            b.invoices.unshift({
+              id: 'INV-2026-07',
+              date: '18 Jul 2026',
+              amount: b.price.split(' /')[0],
+              status: 'Paid'
+            });
+            renderBilling();
+            EGIApp.openModal({
+              title: 'Payment successful',
+              small: true,
+              body: '<p>Your subscription has been renewed until <strong>18 September 2026</strong>.</p>',
+              footer: '<button type="button" class="btn btn-primary" id="done-renew">Done</button>'
+            });
+            document.getElementById('done-renew').onclick = function () {
+              EGIApp.closeModal();
+              EGIApp.toast('Subscription renewed successfully', 'success');
+            };
+          }, 1200);
+        };
+      }
+
+      function pageContent() {
+        var ctx = EGI.companyContext;
+        var n = EGI.notifications;
+        var u = EGI.user;
+
+        return (
+          '<div class="settings-layout">' +
+            '<nav class="settings-nav" aria-label="Settings">' +
+              '<button type="button" class="settings-nav-item active" data-section="profile">' + EGIIcons.user + ' Profile</button>' +
+              '<button type="button" class="settings-nav-item" data-section="company">' + EGIIcons.building + ' Company Context</button>' +
+              '<button type="button" class="settings-nav-item" data-section="notifications">' + EGIIcons.bell + ' Notifications</button>' +
+              '<button type="button" class="settings-nav-item" data-section="team">' + EGIIcons.user + ' Team & Access</button>' +
+              '<button type="button" class="settings-nav-item" data-section="billing">' + EGIIcons.credit + ' Subscription & Billing</button>' +
+            '</nav>' +
+            '<div class="settings-panel">' +
+
+              '<section class="settings-section active" id="section-profile">' +
+                '<h2>Profile</h2>' +
+                '<p class="panel-desc">Your account identity and display preferences.</p>' +
+                '<div class="profile-identity">' +
+                  '<div class="profile-avatar-wrap"><img src="' + u.avatar + '" alt="Profile photo of ' + EGIApp.escapeHtml(u.name) + '" /></div>' +
+                  '<div><strong>' + EGIApp.escapeHtml(u.name) + '</strong><span>' + EGIApp.escapeHtml(u.role) + '</span><button type="button" class="btn btn-secondary btn-sm" id="change-avatar">Change photo</button></div>' +
+                '</div>' +
+                '<div class="form-grid">' +
+                  '<div class="form-group"><label for="profile-name">Name</label><input id="profile-name" value="' + EGIApp.escapeHtml(u.name) + '" /></div>' +
+                  '<div class="form-group"><label for="profile-title">Job title</label><input id="profile-title" value="' + EGIApp.escapeHtml(u.title) + '" /></div>' +
+                  '<div class="form-group full"><label for="profile-email">Email</label><input id="profile-email" type="email" value="' + EGIApp.escapeHtml(u.email) + '" /></div>' +
+                  '<div class="form-group"><label for="profile-tz">Time zone</label>' +
+                    '<select id="profile-tz"><option value="Asia/Jakarta" selected>Asia/Jakarta (WIB)</option><option value="Asia/Makassar">Asia/Makassar (WITA)</option><option value="Asia/Jayapura">Asia/Jayapura (WIT)</option></select></div>' +
+                  '<div class="form-group"><label for="profile-lang">Display language</label>' +
+                    '<select id="profile-lang"><option value="id">Bahasa Indonesia</option><option value="en" selected>English</option></select></div>' +
+                '</div>' +
+                '<div class="form-actions"><button type="button" class="btn btn-primary" data-save="profile">Save profile</button></div>' +
+              '</section>' +
+
+              '<section class="settings-section" id="section-company">' +
+                '<h2>Company Context</h2>' +
+                '<p class="panel-desc">Upload a company profile. AI will build context to personalize relevance, priorities, and issue analysis.</p>' +
+                '<div class="warning-banner">' + EGIIcons.alertTriangle +
+                  '<span>Changes to company context may affect the relevance and priority of insights on the dashboard.</span></div>' +
+
+                '<div id="ctx-flow" data-state="idle">' +
+                  '<div class="ctx-state" data-state-panel="idle">' +
+                    '<div class="ctx-method-grid">' +
+                      '<label class="ctx-method-card" for="ctx-file-input">' +
+                        '<input type="file" id="ctx-file-input" accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden />' +
+                        '<span class="ctx-method-icon" aria-hidden="true">' +
+                          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>' +
+                        '</span>' +
+                        '<strong>Upload document</strong>' +
+                        '<span>PDF, Word, or PowerPoint containing a company profile</span>' +
+                        '<em class="ctx-method-cta">Choose file</em>' +
+                      '</label>' +
+                      '<div class="ctx-method-card ctx-method-link">' +
+                        '<span class="ctx-method-icon" aria-hidden="true">' +
+                          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
+                        '</span>' +
+                        '<strong>Website link</strong>' +
+                        '<span>Enter the URL of your company profile page</span>' +
+                        '<div class="ctx-link-row">' +
+                          '<input type="url" id="ctx-url-input" placeholder="https://company.com/about" />' +
+                          '<button type="button" class="btn btn-primary" id="ctx-url-submit">Analyze</button>' +
+                        '</div>' +
+                      '</div>' +
+                    '</div>' +
+                    '<div class="ctx-current-summary" id="ctx-current-summary">' +
+                      '<div class="ctx-current-head">' +
+                        '<div><strong>Current active context</strong><span id="ctx-updated">Last updated ' + ctx.updatedAt + ' by ' + ctx.updatedBy + '</span></div>' +
+                        '<button type="button" class="btn btn-ghost btn-sm" id="ctx-view-current">View results</button>' +
+                      '</div>' +
+                      '<div class="ctx-current-chips">' +
+                        '<span>' + EGIApp.escapeHtml(ctx.name) + '</span>' +
+                        '<span>' + EGIApp.escapeHtml(ctx.industry) + '</span>' +
+                        '<span>' + EGIApp.escapeHtml(ctx.regions.split(',')[0]) + '</span>' +
+                      '</div>' +
+                    '</div>' +
+                  '</div>' +
+
+                  '<div class="ctx-state" data-state-panel="loading" hidden>' +
+                    '<div class="ctx-loading-card">' +
+                      '<div class="ctx-loading-visual">' +
+                        '<div class="ctx-orbit"><span></span><span></span><span></span></div>' +
+                        '<div class="ctx-loading-core"></div>' +
+                      '</div>' +
+                      '<h3 id="ctx-loading-title">AI is building context…</h3>' +
+                      '<p id="ctx-loading-source" class="form-hint">Processing company profile source</p>' +
+                      '<ol class="ctx-loading-steps" id="ctx-loading-steps">' +
+                        '<li data-step="1" class="active">Reading source</li>' +
+                        '<li data-step="2">Filtering business information</li>' +
+                        '<li data-step="3">Building company context</li>' +
+                      '</ol>' +
+                      '<div class="ctx-progress"><div class="ctx-progress-bar" id="ctx-progress-bar"></div></div>' +
+                    '</div>' +
+                  '</div>' +
+
+                  '<div class="ctx-state" data-state-panel="done" hidden>' +
+                    '<div class="ctx-done-banner">' +
+                      '<div class="ctx-done-icon" aria-hidden="true">' + EGIIcons.check + '</div>' +
+                      '<div>' +
+                        '<strong>Company context is ready to use</strong>' +
+                        '<span id="ctx-done-meta">AI has built context from the source you provided.</span>' +
+                      '</div>' +
+                    '</div>' +
+                    '<div class="ctx-source-pill" id="ctx-source-pill"></div>' +
+                    '<div class="form-grid" id="ctx-result-fields">' +
+                      '<div class="form-group"><label for="ctx-name">Company name</label><input id="ctx-name" value="' + EGIApp.escapeHtml(ctx.name) + '" /></div>' +
+                      '<div class="form-group"><label for="ctx-industry">Industry / sub-industry</label><input id="ctx-industry" value="' + EGIApp.escapeHtml(ctx.industry) + '" /></div>' +
+                      '<div class="form-group full"><label for="ctx-desc">Description</label><textarea id="ctx-desc">' + EGIApp.escapeHtml(ctx.description) + '</textarea></div>' +
+                      '<div class="form-group full"><label for="ctx-products">Products and services</label><textarea id="ctx-products">' + EGIApp.escapeHtml(ctx.products) + '</textarea></div>' +
+                      '<div class="form-group full"><label for="ctx-customers">Target customers</label><textarea id="ctx-customers">' + EGIApp.escapeHtml(ctx.customers) + '</textarea></div>' +
+                      '<div class="form-group full"><label for="ctx-regions">Operating regions</label><textarea id="ctx-regions">' + EGIApp.escapeHtml(ctx.regions) + '</textarea></div>' +
+                      '<div class="form-group full"><label for="ctx-competitors">Competitors</label><textarea id="ctx-competitors">' + EGIApp.escapeHtml(ctx.competitors) + '</textarea></div>' +
+                      '<div class="form-group full"><label for="ctx-priorities">Business priorities</label><textarea id="ctx-priorities">' + EGIApp.escapeHtml(ctx.priorities) + '</textarea></div>' +
+                      '<div class="form-group full"><label for="ctx-goals">Business goals</label><textarea id="ctx-goals">' + EGIApp.escapeHtml(ctx.goals) + '</textarea></div>' +
+                      '<div class="form-group full"><label for="ctx-risks">Risks to watch</label><textarea id="ctx-risks">' + EGIApp.escapeHtml(ctx.risks) + '</textarea></div>' +
+                      '<div class="form-group full"><label for="ctx-topics">Monitoring topics</label><textarea id="ctx-topics">' + EGIApp.escapeHtml(ctx.topics) + '</textarea></div>' +
+                      '<div class="form-group full"><label for="ctx-deps">Business dependencies</label><textarea id="ctx-deps">' + EGIApp.escapeHtml(ctx.dependencies) + '</textarea></div>' +
+                    '</div>' +
+                    '<div class="form-actions">' +
+                      '<button type="button" class="btn btn-secondary" id="ctx-upload-again">Upload new source</button>' +
+                      '<button type="button" class="btn btn-primary" data-save="company">Save company context</button>' +
+                    '</div>' +
+                  '</div>' +
+                '</div>' +
+              '</section>' +
+
+              '<section class="settings-section" id="section-notifications">' +
+                '<h2>Notifications</h2>' +
+                '<p class="panel-desc">Every alert email sent is archived in the app, even if the email channel is later turned off.</p>' +
+                '<div class="toggle-list">' +
+                  toggleRow('toggle-high', 'High-priority instant alerts', 'Sent immediately when there is a high-priority issue or material update.', n.highAlert) +
+                  toggleRow('toggle-daily', 'Daily digest', '3–5 issues with new developments each day.', n.dailyDigest) +
+                  toggleRow('toggle-weekly', 'Weekly report', 'Pattern summary and comparison to the previous week.', n.weeklyReport) +
+                  toggleRow('toggle-monthly', 'Monthly report', 'Strategic trends and comparison to the previous month.', n.monthlyReport) +
+                  toggleRow('toggle-email', 'Email channel', 'Send notifications to your registered email.', n.emailChannel) +
+                '</div>' +
+                '<div class="form-grid" style="margin-top:20px">' +
+                  '<div class="form-group"><label for="notif-time">Delivery time</label><input id="notif-time" type="time" value="' + n.sendTime + '" /></div>' +
+                  '<div class="form-group"><label for="notif-tz">Time zone</label>' +
+                    '<select id="notif-tz"><option value="Asia/Jakarta" selected>Asia/Jakarta (WIB)</option><option value="Asia/Makassar">Asia/Makassar (WITA)</option></select></div>' +
+                '</div>' +
+                '<div class="form-actions"><button type="button" class="btn btn-primary" data-save="notifications">Save preferences</button></div>' +
+              '</section>' +
+
+              '<section class="settings-section" id="section-team">' +
+                '<h2>Team & Access</h2>' +
+                '<p class="panel-desc">Manage users, roles, and access status for this company context.</p>' +
+                '<div style="display:flex;justify-content:flex-end;margin-bottom:12px">' +
+                  '<button type="button" class="btn btn-primary btn-sm" id="invite-user">Invite user</button></div>' +
+                '<div style="overflow-x:auto">' +
+                  '<table class="data-table">' +
+                    '<thead><tr><th>User</th><th>Role</th><th>Status</th><th>Last active</th><th></th></tr></thead>' +
+                    '<tbody id="team-tbody"></tbody>' +
+                  '</table>' +
+                '</div>' +
+              '</section>' +
+
+              '<section class="settings-section" id="section-billing">' +
+                '<h2>Subscription & Billing</h2>' +
+                '<p class="panel-desc">Manage your plan, renewals, and payment history.</p>' +
+                '<div class="billing-card">' +
+                  '<div class="billing-plan" id="billing-plan"></div>' +
+                  '<p class="form-hint">Enterprise plan for strategic multi-company insights.</p>' +
+                  '<dl class="billing-meta">' +
+                    '<div><dt>Status</dt><dd id="billing-status"></dd></div>' +
+                    '<div><dt>Renewal date</dt><dd id="billing-renewal"></dd></div>' +
+                    '<div><dt>Payment method</dt><dd id="billing-payment"></dd></div>' +
+                    '<div><dt>Usage</dt><dd id="billing-seats"></dd></div>' +
+                    '<div><dt>Cost</dt><dd id="billing-price"></dd></div>' +
+                  '</dl>' +
+                  '<div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap">' +
+                    '<button type="button" class="btn btn-primary" id="renew-btn">Renew subscription</button>' +
+                    '<button type="button" class="btn btn-secondary" id="upgrade-btn">Change plan</button>' +
+                  '</div>' +
+                '</div>' +
+                '<h3 style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--text-strong)">Billing history</h3>' +
+                '<div class="invoice-list" id="invoice-list"></div>' +
+              '</section>' +
+
+            '</div>' +
+          '</div>'
+        );
+      }
+
+      function toggleRow(id, title, desc, on) {
+        return (
+          '<div class="toggle-row">' +
+            '<div class="toggle-info"><strong>' + title + '</strong><span>' + desc + '</span></div>' +
+            '<button type="button" class="toggle' + (on ? ' on' : '') + '" id="' + id + '" role="switch" aria-checked="' + on + '" aria-label="' + title + '"></button>' +
+          '</div>'
+        );
+      }
+
+      document.getElementById('app').innerHTML = EGIApp.renderShell({
+        active: 'settings',
+        pageTitle: 'Settings',
+        content: pageContent()
+      });
+      EGIApp.bindShell();
+
+      document.querySelectorAll('.settings-nav-item').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          switchSection(this.getAttribute('data-section'));
+        });
+      });
+
+      document.querySelectorAll('#section-profile input, #section-profile select, #section-notifications input, #section-notifications select')
+        .forEach(function (el) {
+          el.addEventListener('input', markDirty);
+          el.addEventListener('change', markDirty);
+        });
+
+      document.querySelectorAll('[data-save]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          activeSection = this.getAttribute('data-save');
+          saveCurrentSection();
+        });
+      });
+
+      (function bindCompanyContextFlow() {
+        var flow = document.getElementById('ctx-flow');
+        if (!flow) return;
+
+        var loadingTimer = null;
+        var progressTimer = null;
+
+        function setState(state) {
+          flow.setAttribute('data-state', state);
+          flow.querySelectorAll('[data-state-panel]').forEach(function (panel) {
+            var show = panel.getAttribute('data-state-panel') === state;
+            panel.hidden = !show;
+          });
+        }
+
+        function fillGeneratedContext(sourceLabel) {
+          var ctx = EGI.companyContext;
+          // Simulated AI enrichment from uploaded profile
+          ctx.name = ctx.name || 'Astra International';
+          ctx.industry = 'Holding & Diversifikasi';
+          ctx.description = 'Grup usaha diversifikasi dengan portofolio otomotif, jasa keuangan, alat berat, agribisnis, infrastruktur, dan teknologi digital di Indonesia.';
+          ctx.products = 'Distribusi kendaraan, pembiayaan, alat berat, agribisnis, layanan digital';
+          ctx.customers = 'Konsumen ritel, korporasi B2B, mitra dealer dan distributor';
+          ctx.regions = 'Nasional — fokus Jawa, Sumatera, Kalimantan, dan Sulawesi';
+          ctx.competitors = 'Grup otomotif regional, pemain pembiayaan, kompetitor alat berat';
+          ctx.priorities = 'Efisiensi operasional, ekspansi layanan digital, retensi pelanggan kunci';
+          ctx.goals = 'Pertumbuhan pendapatan berkelanjutan dan diversifikasi portofolio';
+          ctx.risks = 'Siklus industri otomotif, tekanan suku bunga, perubahan regulasi';
+          ctx.topics = 'Tarif impor, regulasi industri, kompetitor regional, harga energi, permintaan pasar';
+          ctx.dependencies = 'Jaringan dealer, rantai pasok komponen, mitra pembiayaan';
+          ctx.source = sourceLabel;
+          ctx.updatedAt = '18 Jul 2026, ' + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+          ctx.updatedBy = 'AI · verified by ' + EGI.user.name;
+
+          var map = {
+            'ctx-name': ctx.name,
+            'ctx-industry': ctx.industry,
+            'ctx-desc': ctx.description,
+            'ctx-products': ctx.products,
+            'ctx-customers': ctx.customers,
+            'ctx-regions': ctx.regions,
+            'ctx-competitors': ctx.competitors,
+            'ctx-priorities': ctx.priorities,
+            'ctx-goals': ctx.goals,
+            'ctx-risks': ctx.risks,
+            'ctx-topics': ctx.topics,
+            'ctx-deps': ctx.dependencies
+          };
+          Object.keys(map).forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.value = map[id];
+          });
+
+          document.getElementById('ctx-source-pill').innerHTML =
+            '<span class="ctx-source-label">Processed source</span>' +
+            '<strong>' + EGIApp.escapeHtml(sourceLabel) + '</strong>';
+          document.getElementById('ctx-done-meta').textContent =
+            'Generated automatically · ' + ctx.updatedAt + ' · Ready for review before saving';
+
+          document.querySelectorAll('#ctx-result-fields input, #ctx-result-fields textarea').forEach(function (el) {
+            el.addEventListener('input', markDirty);
+          });
+        }
+
+        function startProcessing(sourceLabel) {
+          dirty = false;
+          setState('loading');
+          document.getElementById('ctx-loading-title').textContent = 'AI is building context…';
+          document.getElementById('ctx-loading-source').textContent = 'Processing: ' + sourceLabel;
+
+          var steps = document.querySelectorAll('#ctx-loading-steps li');
+          var bar = document.getElementById('ctx-progress-bar');
+          var progress = 8;
+          var stepIndex = 0;
+          bar.style.width = progress + '%';
+          steps.forEach(function (s, i) {
+            s.classList.toggle('active', i === 0);
+            s.classList.remove('done');
+          });
+
+          clearInterval(progressTimer);
+          clearTimeout(loadingTimer);
+
+          progressTimer = setInterval(function () {
+            progress = Math.min(progress + 4 + Math.random() * 6, 92);
+            bar.style.width = progress + '%';
+            var nextStep = progress > 35 ? 1 : 0;
+            if (progress > 65) nextStep = 2;
+            if (nextStep !== stepIndex) {
+              steps[stepIndex].classList.remove('active');
+              steps[stepIndex].classList.add('done');
+              stepIndex = nextStep;
+              steps[stepIndex].classList.add('active');
+            }
+          }, 280);
+
+          loadingTimer = setTimeout(function () {
+            clearInterval(progressTimer);
+            steps.forEach(function (s) {
+              s.classList.remove('active');
+              s.classList.add('done');
+            });
+            bar.style.width = '100%';
+            setTimeout(function () {
+              fillGeneratedContext(sourceLabel);
+              setState('done');
+              EGIApp.toast('Company context generated successfully', 'success');
+            }, 350);
+          }, 2800);
+        }
+
+        document.getElementById('ctx-file-input').addEventListener('change', function () {
+          var file = this.files && this.files[0];
+          if (!file) return;
+          var ok = /\.(pdf|doc|docx|ppt|pptx)$/i.test(file.name);
+          if (!ok) {
+            EGIApp.toast('File must be PDF, Word, or PowerPoint', 'error');
+            this.value = '';
+            return;
+          }
+          startProcessing(file.name + ' · ' + Math.max(1, Math.round(file.size / 1024)) + ' KB');
+          this.value = '';
+        });
+
+        document.getElementById('ctx-url-submit').addEventListener('click', function () {
+          var url = (document.getElementById('ctx-url-input').value || '').trim();
+          if (!url) {
+            EGIApp.toast('Enter a company profile website URL', 'error');
+            return;
+          }
+          if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+          startProcessing(url);
+        });
+
+        document.getElementById('ctx-url-input').addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById('ctx-url-submit').click();
+          }
+        });
+
+        document.getElementById('ctx-upload-again').addEventListener('click', function () {
+          dirty = false;
+          setState('idle');
+          document.getElementById('ctx-url-input').value = '';
+        });
+
+        document.getElementById('ctx-view-current').addEventListener('click', function () {
+          fillGeneratedContext(EGI.companyContext.source || 'Saved context');
+          setState('done');
+        });
+      })();
+
+      var avatarBtn = document.getElementById('change-avatar');
+      if (avatarBtn) {
+        avatarBtn.addEventListener('click', function () {
+          EGIApp.toast('Demo: profile photo change available with account integration.', 'success');
+        });
+      }
+
+      ['toggle-high', 'toggle-daily', 'toggle-weekly', 'toggle-monthly', 'toggle-email'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', function () {
+          this.classList.toggle('on');
+          this.setAttribute('aria-checked', this.classList.contains('on'));
+          markDirty();
+          var map = {
+            'toggle-high': 'highAlert',
+            'toggle-daily': 'dailyDigest',
+            'toggle-weekly': 'weeklyReport',
+            'toggle-monthly': 'monthlyReport',
+            'toggle-email': 'emailChannel'
+          };
+          EGI.notifications[map[id]] = this.classList.contains('on');
+        });
+      });
+
+      document.getElementById('invite-user').addEventListener('click', function () {
+        EGIApp.openModal({
+          title: 'Invite user',
+          small: true,
+          body:
+            '<div class="form-group"><label>Email</label><input id="invite-email" type="email" placeholder="name@company.com" /></div>' +
+            '<div class="form-group" style="margin-top:12px"><label>Role</label>' +
+            '<select id="invite-role"><option>Director</option><option>Analyst</option><option>Admin</option></select></div>',
+          footer:
+            '<button type="button" class="btn btn-secondary" id="cancel-invite">Cancel</button>' +
+            '<button type="button" class="btn btn-primary" id="send-invite">Send invitation</button>'
+        });
+        document.getElementById('cancel-invite').onclick = EGIApp.closeModal;
+        document.getElementById('send-invite').onclick = function () {
+          var email = document.getElementById('invite-email').value.trim();
+          if (!email) { EGIApp.toast('Email is required', 'error'); return; }
+          EGI.team.push({
+            id: 'u' + (EGI.team.length + 1),
+            name: email.split('@')[0],
+            email: email,
+            role: document.getElementById('invite-role').value,
+            status: 'active',
+            lastActive: 'Invitation sent'
+          });
+          EGIApp.toast('Invitation sent to ' + email, 'success');
+          EGIApp.closeModal();
+          renderTeam();
+        };
+      });
+
+      document.getElementById('renew-btn').addEventListener('click', startRenewal);
+      document.getElementById('upgrade-btn').addEventListener('click', function () {
+        EGIApp.openModal({
+          title: 'Change plan',
+          small: true,
+          body:
+            '<p class="modal-lead">Choose the plan that fits your organization\'s needs.</p>' +
+            '<div class="feedback-grid">' +
+              '<button type="button" class="feedback-choice" data-plan="Professional">Professional — Rp 12.500.000 / month</button>' +
+              '<button type="button" class="feedback-choice" data-plan="Enterprise">Enterprise — Rp 28.500.000 / month (current)</button>' +
+            '</div>',
+          footer: '<button type="button" class="btn btn-secondary" id="cancel-plan">Close</button>'
+        });
+        document.getElementById('cancel-plan').onclick = EGIApp.closeModal;
+        document.querySelectorAll('[data-plan]').forEach(function (btn) {
+          btn.onclick = function () {
+            var plan = this.getAttribute('data-plan');
+            EGI.billing.plan = plan;
+            EGI.billing.price = plan === 'Professional' ? 'Rp 12.500.000 / month' : 'Rp 28.500.000 / month';
+            renderBilling();
+            EGIApp.toast('Plan change request to ' + plan + ' recorded', 'success');
+            EGIApp.closeModal();
+          };
+        });
+      });
+
+      renderTeam();
+      renderBilling();
+
+      var hash = (window.location.hash || '').replace('#', '');
+      if (hash && ['profile', 'company', 'notifications', 'team', 'billing'].indexOf(hash) !== -1) {
+        switchSection(hash, true);
+      }
+    })();
+  </script>
+</body>
+</html>

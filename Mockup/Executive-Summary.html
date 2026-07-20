@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Executive Dashboard — EGI Media</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="app" id="app"></div>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (function () {
+      var period = '24jam';
+      var searchQuery = '';
+      var activeIssueId = null;
+
+      var PERIODS = [
+        { id: '24jam', label: '24 jam', desc: 'Perkembangan terbaru' },
+        { id: '7hari', label: '7 hari', desc: 'Perkembangan dalam satu minggu' },
+        { id: '30hari', label: '30 hari', desc: 'Konteks yang lebih luas' }
+      ];
+
+      function periodMeta(id) {
+        return PERIODS.find(function (p) { return p.id === id; }) || PERIODS[0];
+      }
+
+      function updatePeriodTrigger() {
+        var meta = periodMeta(period);
+        var label = document.getElementById('period-label');
+        if (label) label.textContent = meta.label;
+        document.querySelectorAll('#period-menu .period-option').forEach(function (opt) {
+          var active = opt.getAttribute('data-period') === period;
+          opt.classList.toggle('active', active);
+          var check = opt.querySelector('.period-option-check');
+          if (active && !check) {
+            opt.insertAdjacentHTML('beforeend', '<span class="period-option-check" aria-hidden="true">' + EGIIcons.check + '</span>');
+          } else if (!active && check) {
+            check.remove();
+          }
+        });
+      }
+
+      function getVisibleIssues() {
+        var issues = EGIApp.filterIssuesByCompany(EGI.issues)
+          .filter(function (i) { return i.status !== 'selesai'; });
+
+        if (searchQuery) {
+          var q = searchQuery.toLowerCase();
+          issues = issues.filter(function (i) {
+            return i.title.toLowerCase().indexOf(q) !== -1 ||
+              i.summary.toLowerCase().indexOf(q) !== -1 ||
+              i.whatHappened.toLowerCase().indexOf(q) !== -1;
+          });
+        } else {
+          issues = EGIApp.filterIssuesByPeriod(issues, period);
+        }
+
+        var order = { tinggi: 0, sedang: 1, rendah: 2 };
+        issues.sort(function (a, b) {
+          // Preserve the curated source order when priority is equal.
+          return order[a.priority] - order[b.priority];
+        });
+
+        return issues.slice(0, searchQuery ? 20 : 5);
+      }
+
+      function renderList() {
+        var issues = getVisibleIssues();
+        var listEl = document.getElementById('issue-list');
+        var supportEl = document.getElementById('supporting-text');
+        var resultHeader = document.getElementById('search-result-header');
+
+        if (searchQuery) {
+          resultHeader.style.display = 'flex';
+          resultHeader.innerHTML =
+            '<strong>' + issues.length + ' hasil untuk “' + EGIApp.escapeHtml(searchQuery) + '”</strong>' +
+            '<button type="button" class="btn btn-sm btn-secondary" id="clear-search-results">Kembali ke isu aktif</button>';
+          document.getElementById('clear-search-results').onclick = function () {
+            searchQuery = '';
+            var input = document.getElementById('global-search');
+            if (input) input.value = '';
+            document.getElementById('search-clear').classList.remove('visible');
+            renderList();
+          };
+          supportEl.textContent = 'Hasil pencarian isu, topik, dan laporan terkait perusahaan aktif.';
+        } else {
+          resultHeader.style.display = 'none';
+          supportEl.textContent = '3–5 isu terpenting yang perlu perhatian saat ini';
+        }
+
+        if (!issues.length) {
+          listEl.innerHTML = searchQuery
+            ? EGIApp.emptyState('Tidak ada hasil untuk kata kunci ini.', 'Coba kata kunci lain atau hapus filter pencarian.')
+            : EGIApp.emptyState('Belum ada isu aktif pada periode ini.', 'Coba ubah filter periode atau company context.');
+          return;
+        }
+
+        listEl.innerHTML = issues.map(function (issue, idx) {
+          return EGIApp.issueCardHtml(issue, idx + 1, issue.id === activeIssueId);
+        }).join('');
+
+        listEl.querySelectorAll('.issue-card').forEach(function (card) {
+          card.addEventListener('click', function () {
+            activeIssueId = this.getAttribute('data-issue-id');
+            EGIApp.openIssueDrawer(activeIssueId, this);
+            listEl.querySelectorAll('.issue-card').forEach(function (c) {
+              c.classList.toggle('active', c.getAttribute('data-issue-id') === activeIssueId);
+            });
+          });
+        });
+      }
+
+      function pageContent() {
+        var current = periodMeta(period);
+        var options = PERIODS.map(function (p) {
+          return (
+            '<button type="button" class="period-option' + (p.id === period ? ' active' : '') + '" data-period="' + p.id + '" role="option" aria-selected="' + (p.id === period) + '">' +
+              '<span class="period-option-text">' +
+                '<strong>' + p.label + '</strong>' +
+                '<span>' + p.desc + '</span>' +
+              '</span>' +
+              (p.id === period ? '<span class="period-option-check" aria-hidden="true">' + EGIIcons.check + '</span>' : '') +
+            '</button>'
+          );
+        }).join('');
+
+        return (
+          '<div class="page-flow executive-flow">' +
+            '<div class="page-context">' +
+              '<div class="toolbar">' +
+                '<div class="dropdown period-dropdown" id="period-filter">' +
+                  '<button type="button" class="period-trigger" id="period-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter periode">' +
+                    '<span class="period-trigger-icon" aria-hidden="true">' +
+                      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+                    '</span>' +
+                    '<span class="period-trigger-copy">' +
+                      '<span class="period-trigger-kicker">Periode</span>' +
+                      '<span class="period-trigger-label" id="period-label">' + current.label + '</span>' +
+                    '</span>' +
+                    EGIIcons.chevron +
+                  '</button>' +
+                  '<div class="dropdown-menu left-align period-menu" id="period-menu" role="listbox">' +
+                    '<div class="dropdown-header"><strong>Pilih periode</strong><span>Berdasarkan perkembangan terakhir</span></div>' +
+                    options +
+                  '</div>' +
+                '</div>' +
+              '</div>' +
+              '<p class="supporting-text" id="supporting-text">3–5 isu terpenting yang perlu perhatian saat ini</p>' +
+            '</div>' +
+            '<div class="search-result-header" id="search-result-header" style="display:none"></div>' +
+            '<div class="issue-list" id="issue-list"></div>' +
+          '</div>'
+        );
+      }
+
+      document.getElementById('app').innerHTML = EGIApp.renderShell({
+        active: 'dashboard',
+        pageTitle: 'Executive Dashboard',
+        content: pageContent()
+      });
+      EGIApp.bindShell();
+
+      (function bindPeriodDropdown() {
+        var btn = document.getElementById('period-btn');
+        var menu = document.getElementById('period-menu');
+        if (!btn || !menu) return;
+
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var wasOpen = menu.classList.contains('open');
+          document.querySelectorAll('.dropdown-menu.open').forEach(function (m) { m.classList.remove('open'); });
+          document.querySelectorAll('[aria-expanded="true"]').forEach(function (el) {
+            if (el !== btn) el.setAttribute('aria-expanded', 'false');
+          });
+          if (!wasOpen) {
+            menu.classList.add('open');
+            btn.setAttribute('aria-expanded', 'true');
+          } else {
+            btn.setAttribute('aria-expanded', 'false');
+          }
+        });
+
+        menu.addEventListener('click', function (e) { e.stopPropagation(); });
+
+        menu.querySelectorAll('.period-option').forEach(function (opt) {
+          opt.addEventListener('click', function () {
+            period = this.getAttribute('data-period');
+            updatePeriodTrigger();
+            menu.classList.remove('open');
+            btn.setAttribute('aria-expanded', 'false');
+            searchQuery = '';
+            var input = document.getElementById('global-search');
+            if (input) input.value = '';
+            var clear = document.getElementById('search-clear');
+            if (clear) clear.classList.remove('visible');
+            renderList();
+          });
+        });
+      })();
+
+      window.onCompanyChange = function () { renderList(); };
+      window.onIssueUpdated = function () { renderList(); };
+      window.onSavedChange = function () {};
+      window.onGlobalSearch = function (q) {
+        searchQuery = q;
+        renderList();
+      };
+      window.onSearchClear = function () {
+        searchQuery = '';
+        renderList();
+      };
+      window.onSearchSelect = function (id) {
+        activeIssueId = id;
+        renderList();
+        EGIApp.openIssueDrawer(id);
+      };
+
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('q')) {
+        searchQuery = params.get('q');
+        var input = document.getElementById('global-search');
+        if (input) {
+          input.value = searchQuery;
+          document.getElementById('search-clear').classList.add('visible');
+        }
+      }
+
+      renderList();
+
+      if (params.get('issue')) {
+        activeIssueId = params.get('issue');
+        renderList();
+        setTimeout(function () { EGIApp.openIssueDrawer(activeIssueId); }, 100);
+      }
+    })();
+  </script>
+</body>
+</html>

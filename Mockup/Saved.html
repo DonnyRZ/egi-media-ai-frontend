@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saved — EGI Media</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="app" id="app"></div>
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    (function () {
+      var tab = 'isu';
+      var query = '';
+      var priorityFilter = 'semua';
+
+      function renderSaved() {
+        var list = document.getElementById('saved-list');
+        var q = query.toLowerCase();
+
+        if (tab === 'isu') {
+          var issues = EGI.saved.issues.map(function (id) {
+            return EGI.issues.find(function (i) { return i.id === id; });
+          }).filter(Boolean);
+
+          issues = issues.filter(function (i) {
+            if (priorityFilter !== 'semua' && i.priority !== priorityFilter) return false;
+            if (q && i.title.toLowerCase().indexOf(q) === -1 && i.summary.toLowerCase().indexOf(q) === -1) return false;
+            return true;
+          });
+
+          if (!issues.length) {
+            list.innerHTML = EGIApp.emptyState(
+              'Belum ada isu yang disimpan.',
+              'Simpan isu penting agar mudah ditemukan kembali.',
+              '<a class="btn btn-primary" href="Executive-Summary.html">Ke Executive Summary</a>'
+            );
+            return;
+          }
+
+          list.innerHTML = issues.map(function (issue) {
+            return (
+              '<div class="saved-item">' +
+                '<button type="button" class="saved-item-main" data-open-issue="' + issue.id + '">' +
+                  '<div class="saved-type">Isu</div>' +
+                  '<div class="issue-title" style="font-size:16px;margin-bottom:4px">' + EGIApp.escapeHtml(issue.title) + '</div>' +
+                  '<div class="issue-summary" style="-webkit-line-clamp:2">' + EGIApp.escapeHtml(issue.summary) + '</div>' +
+                  '<div class="badge-row" style="margin-top:10px">' +
+                    EGIApp.priorityBadge(issue.priority) +
+                    EGIApp.statusBadge(issue.status) +
+                    '<span class="timestamp">Diperbarui ' + issue.updatedAt + '</span>' +
+                  '</div>' +
+                '</button>' +
+                '<button type="button" class="btn btn-secondary btn-sm" data-unsave-issue="' + issue.id + '">Unsave</button>' +
+              '</div>'
+            );
+          }).join('');
+        }
+
+        if (tab === 'reports') {
+          var reports = EGI.saved.reports.map(function (id) {
+            return EGI.reports.find(function (r) { return r.id === id; });
+          }).filter(Boolean);
+
+          reports = reports.filter(function (r) {
+            if (q && r.title.toLowerCase().indexOf(q) === -1 && r.summary.toLowerCase().indexOf(q) === -1) return false;
+            return true;
+          });
+
+          if (!reports.length) {
+            list.innerHTML = EGIApp.emptyState(
+              'Belum ada laporan yang disimpan.',
+              'Simpan laporan dari halaman Laporan untuk referensi berikutnya.',
+              '<a class="btn btn-primary" href="Reports.html">Ke Laporan</a>'
+            );
+            return;
+          }
+
+          list.innerHTML = reports.map(function (r) {
+            return (
+              '<div class="saved-item">' +
+                '<button type="button" class="saved-item-main" data-open-report="' + r.id + '">' +
+                  '<div class="saved-type">Laporan · ' + r.type + '</div>' +
+                  '<div class="issue-title" style="font-size:16px;margin-bottom:4px">' + EGIApp.escapeHtml(r.title) + '</div>' +
+                  '<div class="issue-summary">' + EGIApp.escapeHtml(r.summary) + '</div>' +
+                  '<div class="alert-footer" style="margin-top:10px">' +
+                    EGIApp.reviewBadge(r.status) +
+                    '<span class="timestamp">' + r.periodLabel + '</span>' +
+                  '</div>' +
+                '</button>' +
+                '<button type="button" class="btn btn-secondary btn-sm" data-unsave-report="' + r.id + '">Unsave</button>' +
+              '</div>'
+            );
+          }).join('');
+        }
+
+        bindSavedActions();
+      }
+
+      function confirmUnsave(onConfirm) {
+        EGIApp.openModal({
+          title: 'Hapus dari Tersimpan?',
+          small: true,
+          body: '<p>Item ini akan dihapus dari daftar Tersimpan. Anda masih dapat menyimpannya lagi nanti.</p>',
+          footer:
+            '<button type="button" class="btn btn-secondary" id="cancel-unsave">Batal</button>' +
+            '<button type="button" class="btn btn-danger" id="confirm-unsave">Unsave</button>'
+        });
+        document.getElementById('cancel-unsave').onclick = EGIApp.closeModal;
+        document.getElementById('confirm-unsave').onclick = function () {
+          EGIApp.closeModal();
+          onConfirm();
+        };
+      }
+
+      function bindSavedActions() {
+        document.querySelectorAll('[data-open-issue]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            EGIApp.openIssueDrawer(this.getAttribute('data-open-issue'));
+          });
+        });
+
+        document.querySelectorAll('[data-open-report]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            window.location.href = 'Reports.html?open=' + this.getAttribute('data-open-report');
+          });
+        });
+
+        document.querySelectorAll('[data-unsave-issue]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = this.getAttribute('data-unsave-issue');
+            confirmUnsave(function () {
+              EGIApp.toggleSaveIssue(id);
+              renderSaved();
+            });
+          });
+        });
+
+        document.querySelectorAll('[data-unsave-report]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = this.getAttribute('data-unsave-report');
+            confirmUnsave(function () {
+              var idx = EGI.saved.reports.indexOf(id);
+              if (idx !== -1) EGI.saved.reports.splice(idx, 1);
+              EGIApp.toast('Laporan dihapus dari Tersimpan');
+              renderSaved();
+            });
+          });
+        });
+      }
+
+      function pageContent() {
+        return (
+          '<div class="page-flow">' +
+            '<div class="page-context saved-page-context">' +
+              '<div class="toolbar">' +
+                EGIApp.filterDropdownHtml({
+              id: 'saved-tabs',
+              kicker: 'Jenis item',
+              headerTitle: 'Pilih jenis tersimpan',
+              headerHint: 'Isu atau laporan',
+              valueAttr: 'data-tab',
+              selected: tab,
+              icon: EGIIcons.bookmark,
+              options: [
+                { id: 'isu', label: 'Isu', desc: 'Isu yang Anda simpan' },
+                { id: 'reports', label: 'Laporan', desc: 'Laporan untuk referensi ulang' }
+              ]
+                }) +
+              '</div>' +
+              '<div class="filter-row">' +
+                '<div class="search-input-wrap compact-search">' +
+                  EGIIcons.search +
+                  '<input type="search" id="saved-search" placeholder="Cari di Tersimpan..." />' +
+                '</div>' +
+                '<select class="select-sm" id="saved-priority">' +
+                  '<option value="semua">Semua prioritas</option>' +
+                  '<option value="tinggi">Tinggi</option>' +
+                  '<option value="sedang">Sedang</option>' +
+                  '<option value="rendah">Rendah</option>' +
+                '</select>' +
+              '</div>' +
+              '<p class="supporting-text">Temukan kembali isu atau laporan yang Anda simpan.</p>' +
+            '</div>' +
+            '<div class="saved-list" id="saved-list"></div>' +
+          '</div>'
+        );
+      }
+
+      document.getElementById('app').innerHTML = EGIApp.renderShell({
+        active: 'saved',
+        pageTitle: 'Saved',
+        content: pageContent()
+      });
+      EGIApp.bindShell();
+
+      EGIApp.bindFilterDropdown({
+        id: 'saved-tabs',
+        valueAttr: 'data-tab',
+        options: [
+          { id: 'isu', label: 'Isu' },
+          { id: 'reports', label: 'Laporan' }
+        ],
+        onChange: function (value) {
+          tab = value;
+          var prio = document.getElementById('saved-priority');
+          prio.style.display = tab === 'reports' ? 'none' : '';
+          renderSaved();
+        }
+      });
+
+      document.getElementById('saved-search').addEventListener('input', function () {
+        query = this.value.trim();
+        renderSaved();
+      });
+
+      document.getElementById('saved-priority').addEventListener('change', function () {
+        priorityFilter = this.value;
+        renderSaved();
+      });
+
+      window.onCompanyChange = renderSaved;
+      window.onSavedChange = renderSaved;
+
+      renderSaved();
+    })();
+  </script>
+</body>
+</html>

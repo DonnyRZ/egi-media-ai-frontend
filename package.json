@@ -1,0 +1,44 @@
+{
+  "name": "egi-media-ai-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test:api": "node --no-warnings=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/*.test.mjs",
+    "test:e2e": "playwright test tests/e2e.pw.spec.mjs --workers=1",
+    "test:a11y": "playwright test tests/accessibility.pw.spec.mjs --workers=1",
+    "test:visual": "playwright test tests/visual.pw.spec.mjs --workers=1",
+    "test:visual:update": "playwright test tests/visual.pw.spec.mjs --update-snapshots",
+    "test:contract": "node --no-warnings=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/environment-validation.test.mjs tests/contract-verification.test.mjs"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.0.1",
+    "@tanstack/react-query": "^5.74.4",
+    "axios": "^1.8.4",
+    "clsx": "^2.1.1",
+    "next": "^15.3.1",
+    "next-intl": "^4.13.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-hook-form": "^7.56.0",
+    "tailwind-merge": "^3.2.0",
+    "zod": "^3.24.3",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@playwright/test": "^1.61.1",
+    "@tailwindcss/postcss": "^4.1.4",
+    "@types/node": "^22.14.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "eslint": "^9.25.0",
+    "eslint-config-next": "^15.3.1",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.4",
+    "typescript": "^5.8.3"
+  }
+}

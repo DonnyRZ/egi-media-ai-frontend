@@ -1,10 +1,25 @@
 # Blueprint Kebutuhan CEO  
 ## AI-Powered News Dashboard EGI Media
 
-**Versi:** 1.0  
-**Status:** Hasil research and gathering kebutuhan pengguna  
+**Versi:** 1.1 (rekonsiliasi dengan mockup)  
+**Status:** Hasil research and gathering kebutuhan pengguna, diselaraskan dengan prototipe interaktif  
 **Persona utama:** CEO / C-Level  
 **Tujuan dokumen:** Menjadi acuan desain produk, UI/UX, business rule, dan pengembangan aplikasi agar implementasi tetap sesuai dengan kebutuhan CEO.
+
+---
+
+# 0. Catatan Rekonsiliasi (v1.1 — 21 Jul 2026)
+
+Dokumen ini awalnya (v1.0) adalah blueprint kebutuhan CEO yang bersifat aspiratif. Pada **21 Juli 2026** dokumen diselaraskan dengan **prototipe/mockup interaktif** yang sudah dibangun (`egi-media-ai-frontend/Mockup/`) setelah prototipe diuji secara empiris halaman per halaman.
+
+**Aturan rekonsiliasi:**
+
+- **Mockup adalah sumber kebenaran (source of truth) untuk fitur dan perilaku produk.** Jika blueprint bertentangan dengan mockup, pernyataan blueprint dikoreksi atau diberi anotasi.
+- Blueprint tetap otoritatif untuk **business rule / intent** yang tidak disentuh oleh mockup (mis. ambang waktu 24 jam / 7 hari, rule pengulangan email, batasan decision-support).
+- Anotasi hasil rekonsiliasi ditandai dengan blok **`> Catatan rekonsiliasi (mockup):`** di sepanjang dokumen.
+- Bagian baru hasil rekonsiliasi ada di **Bagian 24–29** (onboarding, model multi-perusahaan, model data aktual, kosakata kanonik, tabel diskrepansi, dan status simulasi vs kebutuhan produksi).
+
+**Ringkasan temuan terpenting:** onboarding 4 langkah SUDAH ADA di mockup (tidak ada di v1.0); "multi-perusahaan" di mockup adalah **company switcher tingkat akun** (satu login berpindah konteks antar 3 perusahaan), berbeda dari isolasi multi-tenant antar-klien; halaman **Alerts adalah inbox email** yang membaca sumber data `emails`, terpisah dari data `alerts`; alur review laporan memiliki **5 status** konkret; beberapa kapabilitas (pengiriman email, tautan sumber, audit log, persistensi feedback, generasi AI konteks, pembayaran) saat ini **hanya simulasi visual** di prototipe.
 
 ---
 
@@ -103,6 +118,8 @@ Ketika membuka dashboard, CEO ingin langsung melihat maksimal **3–5 isu terpen
 Dashboard tidak boleh langsung menampilkan seluruh berita atau seluruh analisis.
 
 Urutan isu harus berdasarkan prioritas, dari yang paling penting.
+
+> **Catatan rekonsiliasi (mockup):** Halaman dashboard (`Executive-Summary.html`) sudah menerapkan ini. Daftar isu **dibatasi maksimal 5** isu (fungsi kurasi), diurutkan `tinggi → sedang → rendah` (urutan sumber dipertahankan dalam satu tingkat), dan isu berstatus `selesai` dikecualikan. Filter periode (24 jam / 7 hari / 30 hari) bersifat **kumulatif** (7 hari mencakup 24 jam; 30 hari mencakup semua). Daftar juga difilter oleh **perusahaan aktif** (lihat Bagian 25). Pada mockup, `index.html` melakukan redirect instan ke `Executive-Summary.html` sebagai halaman utama.
 
 ## 4.2 Informasi minimum pada daftar isu
 
@@ -359,6 +376,8 @@ Ketika sumber diklik:
 - Detail isu tetap terbuka pada tab sebelumnya.
 - Pengguna tidak kehilangan konteks analisis.
 
+> **Catatan rekonsiliasi (mockup):** Di prototipe, mengklik sumber membuka **modal pratinjau sumber** (judul, tanggal, penulis, klaim yang didukung) dengan tombol "Buka artikel asli". Namun tautan artikel **belum berfungsi** — semua `url` sumber berisi anchor placeholder `#sumber-egimedia` dan tombol hanya memunculkan toast. Perilaku "buka artikel asli di tab baru" (Bagian 8.3 & Acceptance Criteria 21.3) masih **kebutuhan produksi**, belum terpenuhi di mockup. Setiap sumber pada data sudah memuat field `{ title, date, author, claim, url }`.
+
 ## 8.4 Rule sumber
 
 - AI tidak boleh membuat sumber palsu.
@@ -398,6 +417,8 @@ Company Context dapat mencakup:
 - Topik pantauan.
 - Ketergantungan bisnis tertentu.
 - Informasi tambahan yang dimasukkan perusahaan.
+
+> **Catatan rekonsiliasi (mockup):** Company Context di prototipe berupa **form 12 field** konkret: Nama perusahaan, Industri & sub-industri, Deskripsi, Produk & layanan, Pelanggan target, Wilayah operasi, Kompetitor, Prioritas bisnis, Tujuan bisnis, Risiko yang dipantau, Topik pemantauan, dan Ketergantungan bisnis (plus metadata `updatedAt`, `updatedBy`, `source`). Form ini muncul di **dua tempat**: halaman Settings dan langkah ke-4 Onboarding (lihat Bagian 24). Field diisi lewat **alur AI 3 tahap**: idle (unggah dokumen PDF/Word/PPT **atau** masukkan URL) → loading (~2,8 detik animasi) → done (form 12 field yang dapat diedit). **Penting:** generasi AI ini masih **simulasi** — timer tetap yang selalu menghasilkan profil Astra yang sama tanpa memproses isi input (lihat Bagian 29).
 
 ## 9.3 Pengaruh terhadap hasil
 
@@ -487,6 +508,8 @@ Pengguna yang berwenang dapat:
 - Mengubah tingkat prioritas.
 
 Semua perubahan harus disimpan dalam audit log.
+
+> **Catatan rekonsiliasi (mockup):** Dari kontrol manusia di atas, mockup baru mewujudkan **"Tandai selesai"** pada drawer isu (mengubah `status` menjadi `selesai` dan memindahkan isu ke arsip) dan **toggle simpan/hapus** isu. Aksi lain (ubah prioritas manual, gabung/pisah isu, buka kembali, pertahankan >7 hari) **belum ada** di prototipe. **Audit log** yang benar-benar mencatat perubahan **belum diimplementasikan** — yang ada hanya blok "Catatan aktivitas" statis pada modal laporan. Audit log tetap kebutuhan produksi.
 
 ---
 
@@ -584,11 +607,26 @@ Email hanya menjadi jalur pemberitahuan.
 
 Informasi lengkap dan riwayat alert tetap tersedia di aplikasi.
 
+## 13.4 Realitas mockup: halaman Alerts = inbox email
+
+> **Catatan rekonsiliasi (mockup):** Halaman **Alerts (`Alerts.html`) di prototipe adalah sebuah INBOX EMAIL**, bukan daftar event monitoring. Ada dua sumber data yang perlu dibedakan (Agen 4/5/6 wajib memperhatikan):
+>
+> - **`emails`** — arsip email yang benar-benar "dikirim" sistem ke alamat terdaftar pengguna. **Inilah yang dirender oleh halaman Alerts dan lonceng notifikasi (bell).** Difilter per perusahaan aktif, diurutkan terbaru, jumlah belum-dibaca = `emails.filter(!read)`.
+> - **`alerts`** — event mesin monitoring internal (langsung/ringkasan). **Tidak** dirender langsung di halaman Alerts; dipakai untuk daftar "Perkembangan sebelumnya" pada drawer isu dan konsep hitung belum-dibaca.
+>
+> Ini adalah **dua sumber kebenaran paralel untuk "alert"** — sebuah inkonsistensi desain yang perlu disatukan di produksi (idealnya satu model event yang men-generate email).
+>
+> Halaman Alerts memiliki **dua tab: "Alert Urgent"** (tipe `langsung`) dan **"Ringkasan Harian"** (tipe `ringkasan`), masing-masing dengan hitungan belum-dibaca. Membuka email menandainya terbaca (memperbarui tab, bell, dan badge nav) dan menyinkronkan URL `?email=<id>`. Reader email urgent menampilkan banner prioritas, judul isu, "Perkembangan baru", "Dampak perubahan", dan tombol **"Buka Detail Isu"** yang membuka drawer isu bersama; reader ringkasan menampilkan daftar item bernomor dengan badge prioritas + tautan "Buka detail isu".
+>
+> Fitur alert in-app pada Bagian 13.2 (status dibaca, buka kembali, simpan, tandai selesai, feedback relevan/tidak) **sebagian** terwujud: status dibaca/belum ✅, buka kembali ✅; sedangkan simpan-alert, tandai-selesai-alert, dan feedback pada level alert **belum** ada di halaman Alerts (feedback & tandai selesai ada di drawer isu).
+
 ---
 
 # 14. Email Alert
 
 Terdapat dua jenis email.
+
+> **Catatan rekonsiliasi (mockup):** Kedua jenis email (langsung & ringkasan harian) sudah **ditampilkan** di prototipe sebagai arsip (`emails`) beserta reader-nya, dan preferensi pengiriman dapat diatur di Settings (alert prioritas tinggi instan, ringkasan harian, laporan mingguan, laporan bulanan [default nonaktif], channel email, waktu kirim default `07:00`, timezone). **Namun pengiriman email nyata tidak ada** — tidak ada backend; email hanya data seed yang dirender. Trigger, rule waktu, dan rule pengulangan pada Bagian 14.1–14.3 tetap valid sebagai **kebutuhan produksi**, bukan perilaku yang sudah berjalan.
 
 ## 14.1 Alert langsung
 
@@ -735,6 +773,26 @@ Sebelum laporan dibagikan:
 - Versi final dapat disetujui.
 - Perubahan dicatat.
 
+### 15.5.1 State machine review (dari mockup)
+
+> **Catatan rekonsiliasi (mockup):** Alur review laporan sudah terwujud dengan **5 status konkret** (label tampilan dalam kurung):
+>
+> `draft` (Draf) → `in-review` (Ditinjau) → `approved` (Disetujui) → `shared` (Dibagikan), dengan status tambahan `needs-review` (Perlu ditinjau).
+>
+> **Transisi yang benar-benar terpasang dan terverifikasi:**
+> - **Perbaiki ringkasan** → menyimpan ringkasan baru dan menggeser status: `draft → in-review`, serta `approved/shared → needs-review`.
+> - **Setujui laporan** → status menjadi `approved`.
+> - **Bagikan ke manajemen** (hanya pada laporan `approved`) → status menjadi `shared`.
+> - **Simpan** → toggle bookmark laporan (tidak mengubah status).
+>
+> Aksi footer modal berbeda menurut status: laporan `approved` menampilkan **Simpan / Bagikan ke manajemen / Tutup**; status lain menampilkan **Simpan / Tutup** + blok "Tinjauan (opsional)" berisi **Perbaiki ringkasan** dan **Setujui laporan**. Daftar laporan dapat difilter berdasarkan status review (Semua status / Draf / Ditinjau / Disetujui / Dibagikan / Perlu ditinjau).
+>
+> Catatan istilah: instruksi awal menyebut "enam" status, tetapi implementasi aktual hanya **lima** (`draft`, `in-review`, `approved`, `shared`, `needs-review`). Lima status inilah yang menjadi acuan.
+
+### 15.5.2 Struktur & mode render laporan (dari mockup)
+
+> **Catatan rekonsiliasi (mockup):** Laporan berjenis `harian` / `mingguan` / `bulanan`. Ada **dua mode render**: (a) **dokumen terstruktur** bila laporan punya objek `content` (Executive Summary + `sections[]` bertipe: `issues`, `categories`, `risk-opportunity`, `bullets`, `sources`, `paragraphs`, `comparison`, `metrics`, `changes`, `strategic-risks`); (b) **template sederhana** (Ringkasan eksekutif, Sorotan, Comparison box, Risiko, Peluang, Hal yang perlu dipantau, Sumber). Laporan **mingguan** menampilkan grid perbandingan **week-over-week** (isu baru / memburuk / membaik / selesai / jumlah prioritas tinggi dengan delta ↑↓); laporan **bulanan** menampilkan perbandingan **month-over-month** + tabel metrik. Ini menyelaraskan Bagian 15.2–15.4. **Catatan Agen 1:** layout laporan yang sebelumnya dilabeli "dummy/ilustratif" kini terwujud konkret di mockup dan dapat menjadi acuan.
+
 ---
 
 # 16. Bahasa dan Gaya Penulisan
@@ -879,6 +937,8 @@ Feedback digunakan untuk:
 
 Feedback tidak langsung mengubah sistem secara permanen tanpa kontrol dan evaluasi.
 
+> **Catatan rekonsiliasi (mockup):** Picker feedback ada di drawer isu dengan **7 opsi** persis: Relevan, Tidak relevan, Prioritas terlalu tinggi, Prioritas terlalu rendah, Analisis kurang tepat, Isu duplikat, Tidak perlu dipantau lagi (+ catatan opsional). Namun feedback bersifat **advisory saja — tidak menyimpan apa pun** (hanya toast konfirmasi). Loop "feedback → perbaikan rule/context/prompt/pemeringkatan" tetap kebutuhan produksi.
+
 ---
 
 # 19. Penyimpanan dan Riwayat
@@ -911,6 +971,14 @@ Contoh kebutuhan:
 - Pengguna perusahaan lain tidak boleh melihat data perusahaan ini.
 
 Data Company Context, insight, alert, dan laporan tidak boleh tercampur antarperusahaan.
+
+> **Catatan rekonsiliasi (mockup):** Prototipe punya tabel **Team & Access** (5 anggota seed: CEO/C-Level, Direktur, Analyst, Admin; status active/inactive) dengan aksi **Undang pengguna**, **ubah Role**, dan **Cabut akses**. Namun ini **belum menjadi RBAC yang menegakkan izin** — semua halaman dapat diakses tanpa pemeriksaan role, dan aksi Team & Access hanya mengubah data seed.
+>
+> **PENTING — dua konsep "multi-perusahaan" yang berbeda (harus dipisahkan oleh Agen 4/5/6):**
+> 1. **Company switcher tingkat akun (ADA di mockup):** satu login (Arga Wijaya, CEO) dapat **berpindah konteks** antara 3 perusahaan (`astra`, `united-tractors`, `astra-honda`) via selector di header; semua konten (isu, alert/email, tersimpan) difilter oleh perusahaan aktif. Ini adalah **portofolio perusahaan milik satu pengguna/grup**, bukan pemisahan antar-klien. Lihat Bagian 25.
+> 2. **Isolasi multi-tenant antar-klien (kebutuhan produksi, BELUM di mockup):** pemisahan data ketat antara perusahaan pelanggan yang berbeda ("pengguna perusahaan lain tidak boleh melihat data perusahaan ini"). Ini tetap kebutuhan komersial dan **belum tersentuh** oleh prototipe.
+>
+> Kedua konsep ini harus hidup berdampingan: model tenant untuk pelanggan komersial, dan di dalamnya company-switcher untuk grup/holding yang memantau beberapa entitas.
 
 ---
 
@@ -1034,3 +1102,149 @@ Laporan digunakan untuk melihat perubahan antarperiode:
 Seluruh bahasa harus sederhana, langsung, dan menjelaskan arti bisnisnya.
 
 Produk membantu CEO menentukan apa yang membutuhkan perhatian, tetapi tidak mengambil keputusan atau menjalankan tindakan secara otomatis.
+
+---
+
+# 24. Onboarding (BARU — dari mockup)
+
+Blueprint v1.0 tidak mendeskripsikan onboarding, tetapi prototipe **sudah memilikinya** (`Onboarding.html`). Bagian ini ditambahkan agar dokumen sesuai realitas.
+
+## 24.1 Bentuk
+
+- Halaman berdiri sendiri (chrome-nya sendiri, bukan shell aplikasi).
+- **Tur terpandu 4 langkah** dengan progress rail: **Insight → Peringatan → Laporan → Konteks Bisnis**.
+
+## 24.2 Isi tiap langkah
+
+1. **Insight** — demo langsung daftar isu berperingkat (memakai komponen kartu isu asli).
+2. **Peringatan (Alerts)** — demo satu baris email alert + cuplikan prioritas + catatan channel "email alert".
+3. **Laporan (Reports)** — pratinjau dokumen laporan otomatis yang dapat di-scroll, dibangun dari `content` laporan nyata (Executive Summary, isu teratas, kategori dampak, hal yang perlu dipantau, sumber).
+4. **Konteks Bisnis** — alur AI 3 tahap yang **sama** dengan Settings (idle → loading ~2,8 dtk → form 12 field yang dapat diedit; lihat Bagian 9 & 26).
+
+## 24.3 Penyelesaian
+
+- Tombol **"Simpan dan buka dashboard"** menandai `onboardingComplete = true`, menyimpannya, lalu **redirect ke `Executive-Summary.html`**.
+- **Catatan penting:** `onboardingComplete` **disimpan tetapi tidak pernah ditegakkan** — dashboard tetap dapat diakses langsung tanpa melewati onboarding. Untuk produksi, perlu diputuskan apakah onboarding wajib (gate) atau dapat dilewati.
+
+---
+
+# 25. Model Multi-Perusahaan: Company Switcher vs Multi-Tenant
+
+Rekonsiliasi eksplisit atas dua konsep yang mudah tertukar (lihat juga anotasi Bagian 20).
+
+| Aspek | Company switcher (ADA di mockup) | Isolasi multi-tenant (kebutuhan produksi) |
+|---|---|---|
+| Cakupan | Portofolio perusahaan dalam **satu akun/grup** | Pemisahan data antar **klien/pelanggan berbeda** |
+| Contoh | Arga (CEO) berpindah antara Astra / United Tractors / Astra Honda | Perusahaan A tidak boleh melihat data Perusahaan B |
+| Mekanisme di mockup | Selector perusahaan di header → overlay "Memuat konteks…" ~450 ms → filter semua konten + toast | — belum ada |
+| Data terkait | `EGI.companies` (3), `companyIds[]` pada isu, filter email per perusahaan | Boundary tenant, RBAC yang ditegakkan, enkripsi/segmentasi data |
+| Status | ✅ Berfungsi | ❌ Belum tersentuh prototipe |
+
+**Kesimpulan:** keduanya sah dan harus berdampingan. Produk komersial butuh **tenant per pelanggan** (isolasi ketat); di dalam sebuah tenant grup/holding, **company switcher** memungkinkan satu eksekutif memantau beberapa entitas anak. Filter `companyIds[]` di mockup adalah mekanisme switcher tingkat akun, **bukan** batas keamanan tenant.
+
+---
+
+# 26. Model Data Aktual (dari `js/data.js`)
+
+Didokumentasikan agar Agen 5/6 punya acuan skema konkret. Semua data menggantung pada objek global `window.EGI` (prototipe front-end statis, dipersist ke `localStorage` key `egi-media-news-dashboard-mockup-v7`).
+
+## 26.1 Entitas Isu (`EGI.issues`, 6 seed)
+
+Field per isu:
+
+- `id`, `title`, `summary`
+- `priority`: `tinggi` | `sedang` | `rendah`
+- `status`: `baru` | `berkembang` | `dipantau` | `selesai`
+- `updatedAt` (mis. "Hari ini · 08:45"), `updatedFull`
+- `period`: `24jam` | `7hari` | `30hari`
+- `companyIds[]` (perusahaan yang relevan — penggerak filter switcher)
+- `saved` (bool)
+- `priorityReason` ("Alasan prioritas", tampil di atas drawer)
+- Naratif: `whatHappened`, `whyMatters`, `impacts[]`, `risks[]`, `watch[]`, `facts[]`, `analysis`, `assumption`
+- `sources[]`: `{ title, date, author, claim, url }`
+
+Drawer memisahkan **Fakta / Analisis / Asumsi** secara eksplisit (sesuai Bagian 7).
+
+## 26.2 Entitas lain
+
+- **`EGI.companies`** (3): `{ id, name, industry }` — `astra`, `united-tractors`, `astra-honda`.
+- **`EGI.user`**: `{ name, role, email, title, timezone, language, avatar }` — seed Arga Wijaya, CEO.
+- **`EGI.alerts`** (7): event monitoring internal `{ id, eventAt, issueId, type(langsung|ringkasan), title, change, summary, priority, createdAt, read, saved, completed, sourceIndexes[]|dailyIssues[] }`.
+- **`EGI.emails`** (5): arsip email terkirim `{ id, type(langsung|ringkasan), companyIds[], sender, recipient, subject, preview, sentAt, sentLabel, read, priority, issueId, issueTitle, change, impact }`; email ringkasan memakai `intro` + `items[]` `{ issueId, priority, title, change }`.
+- **`EGI.reports`** (8): `{ id, type(harian|mingguan|bulanan), title, periodLabel, status, issueCount, updatedAt, summary, highlights[], comparison, risks[], opportunities[], watch[], sources[], content? }`.
+- **`EGI.saved`**: `{ issues[], alerts[], reports[] }`.
+- **`EGI.team`** (5): `{ id, name, email, role, status(active|inactive), lastActive }`.
+- **`EGI.companyContext`**: `{ name, description, industry, subIndustry, products, customers, regions, competitors, priorities, goals, risks, topics, dependencies, updatedAt, updatedBy, source }` (12 field bisnis + metadata).
+- **`EGI.notifications`**: `{ highAlert, dailyDigest, weeklyReport, monthlyReport, sendTime:'07:00', timezone, emailChannel }`.
+- **`EGI.billing`**: `{ plan:'Enterprise', status, renewalDate, paymentMethod, seats:'12 / 20 pengguna', price:'Rp 28.500.000 / bulan', invoices[] }`.
+- **`EGI.state`**: `{ activeCompanyId:'astra', onboardingComplete:false, unreadAlerts() }`.
+
+---
+
+# 27. Kosakata & State Machine Kanonik (dari mockup)
+
+Nilai internal (kode) vs label tampilan. **Gunakan nilai internal ini sebagai acuan implementasi.**
+
+| Konsep | Nilai internal | Label tampilan |
+|---|---|---|
+| Prioritas isu | `tinggi`, `sedang`, `rendah` | Prioritas Tinggi / Sedang / Rendah |
+| Status isu | `baru`, `berkembang`, `dipantau`, `selesai` | Baru / Berkembang / Dipantau / Selesai |
+| Status review laporan | `draft`, `in-review`, `approved`, `shared`, `needs-review` | Draf / Ditinjau / Disetujui / Dibagikan / Perlu ditinjau |
+| Tipe alert/email | `langsung`, `ringkasan` | Alert Urgent / Ringkasan Harian |
+| Tipe laporan | `harian`, `mingguan`, `bulanan` | Harian / Mingguan / Bulanan |
+| Periode dashboard | `24jam`, `7hari`, `30hari` | 24 jam / 7 hari / 30 hari |
+| Status anggota tim | `active`, `inactive` | Active / Inactive |
+
+---
+
+# 28. Tabel Diskrepansi Blueprint vs Mockup
+
+Mockup menang kecuali item murni business-rule yang tidak disentuh mockup.
+
+| # | Topik | Kata blueprint (v1.0) | Realitas mockup (source of truth) | Resolusi |
+|---|---|---|---|---|
+| 1 | **Onboarding** | Tidak disebut sama sekali | Tur 4 langkah (Insight → Peringatan → Laporan → Konteks Bisnis) + setup Company Context, diakhiri "Simpan dan buka dashboard" → dashboard | **Ditambahkan** sebagai Bagian 24 |
+| 2 | **Multi-perusahaan** | Implikasi isolasi multi-tenant antar-klien | Company switcher tingkat akun (1 login, 3 perusahaan, filter konten) | **Dipisahkan** jadi dua konsep (Bagian 25); keduanya berlaku |
+| 3 | **Alerts** | Alert = pusat informasi event di aplikasi | Halaman Alerts = **inbox email** (`emails`); `alerts` dataset terpisah untuk drawer | Doc dikoreksi (Bagian 13.4); dua sumber data harus disatukan di produksi |
+| 4 | **Status review laporan** | Tidak dienumerasi ("dapat direview, disetujui, dicatat") | 5 status: `draft/in-review/approved/shared/needs-review` + transisi wired | **Dienumerasi** (Bagian 15.5.1) |
+| 5 | **Kosakata prioritas/status** | Teks Indonesia naratif (Tinggi/Sedang/Rendah; Baru/Berkembang/Dipantau/Selesai) | Nilai internal `tinggi/sedang/rendah`, `baru/berkembang/dipantau/selesai` | **Diselaraskan** (Bagian 27) |
+| 6 | **Model data isu** | Deskriptif, tidak berskema | Field konkret termasuk `period`, `companyIds[]`, `priorityReason`, `sources[]{title,date,author,claim,url}` | **Didokumentasikan** (Bagian 26) |
+| 7 | **Company Context** | Daftar longgar ~13 poin | Form **12 field** + alur AI 3 tahap, di Settings & Onboarding | **Dikonkretkan** (Bagian 9 & 26) |
+| 8 | **Cap dashboard** | "3–5 isu" | Maksimal **5**, filter periode kumulatif, `selesai` dikecualikan | Diklarifikasi (Bagian 4.1) |
+| 9 | **Tautan sumber** | Buka artikel asli EGI Media di tab baru | Placeholder `#sumber-egimedia`, hanya toast | Ditandai **simulasi** (Bagian 8.3 & 29) — kebutuhan produksi |
+| 10 | **Pengiriman email** | Alert langsung & ringkasan harian dikirim | Hanya arsip seed dirender; tak ada backend/pengiriman | Ditandai **simulasi** (Bagian 14 & 29) |
+| 11 | **Audit log** | "Semua perubahan disimpan dalam audit log" | Belum ada; hanya "Catatan aktivitas" statis di laporan | Ditandai belum diimplementasi (Bagian 10.5 & 29) |
+| 12 | **Feedback** | Dipakai untuk perbaikan rule/context/prompt | 7 opsi, **advisory** (tidak menyimpan apa pun) | Ditandai **simulasi** (Bagian 18 & 29) |
+| 13 | **RBAC** | Akses dibatasi berdasarkan role, ketat | Tabel Team & Access ada, tetapi izin **tidak ditegakkan** | Ditandai belum ditegakkan (Bagian 20) |
+| 14 | **Bahasa** | Diasumsikan konsisten Bahasa Indonesia | Semua halaman Indonesia, **kecuali Settings.html English** | Inkonsistensi dicatat (Bagian 29) — samakan ke Indonesia di produksi |
+| 15 | **Generasi AI Konteks & pembayaran** | Diharapkan nyata | Timer simulasi (konteks ~2,8 dtk selalu profil Astra; pembayaran ~1,2 dtk) | Ditandai **simulasi** (Bagian 29) |
+| 16 | **Ambang waktu (24 jam / 7 hari / cap 3–5)** | "Rule awal yang disarankan" | Filter periode kumulatif hadir; merge/close 7 hari tidak diuji | Tetap **business rule blueprint** (mockup tidak menyanggah) |
+
+---
+
+# 29. Status Kapabilitas: Simulasi/Visual vs Kebutuhan Produksi
+
+Prototipe adalah **front-end statis tanpa backend**. Daftar ini memisahkan yang sudah benar-benar berfungsi dari yang hanya simulasi.
+
+## 29.1 Sudah berfungsi (state berubah & persist ke `localStorage`)
+
+Pergantian perusahaan; filter periode/perusahaan/prioritas/status review; pencarian global; simpan/hapus isu & laporan; tandai isu selesai; approve/share/perbaiki ringkasan laporan + transisi status; toggle notifikasi; simpan profil/company-context/notifikasi; ubah role/cabut/undang anggota tim; renew & ganti paket billing; status dibaca email + hitungan bell; penyelesaian onboarding.
+
+## 29.2 Hanya simulasi / visual (tidak ada backend nyata)
+
+- **Generasi "AI" Company Context** — timer tetap; selalu menghasilkan profil Astra yang sama tanpa memproses input.
+- **Pemrosesan pembayaran** — timer ~1,2 dtk; renewal/invoice dipalsukan di klien.
+- **Tautan sumber "Buka artikel asli"** dan kartu sumber laporan — hanya toast; `url` = `#sumber-egimedia`.
+- **Pengiriman email** (alert langsung & ringkasan harian) — hanya arsip seed yang dirender.
+- **Feedback** — advisory, tidak menyimpan apa pun.
+- **Audit log** — belum ada (hanya "Catatan aktivitas" statis).
+- **RBAC** — izin tidak ditegakkan.
+- **Unggah dokumen** — hanya memvalidasi ekstensi; isi diabaikan.
+- **"Change photo"** — toast demo.
+
+## 29.3 Inkonsistensi untuk diselesaikan di produksi
+
+- **Bahasa:** `Settings.html` seluruhnya **Bahasa Inggris**, halaman lain Bahasa Indonesia → samakan ke Bahasa Indonesia.
+- **`alerts` vs `emails`:** dua sumber data paralel untuk "alert" → satukan menjadi satu model event yang men-generate email.
+- **`onboardingComplete`** disimpan tetapi tidak ditegakkan → putuskan apakah onboarding menjadi gate.
+- **Cap dashboard 5** dari 6 isu seed → cap final perlu ditegaskan (target 3–5).

@@ -1,0 +1,17 @@
+"use client";
+
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { axiosClient } from "@/shared/lib/axios-client";
+import { API_ENDPOINTS } from "@/shared/constants/api.constants";
+import { PermissionGate } from "@/shared/permission-guard";
+
+type Tenant = { tenant_id: string; name: string; status: string };
+const key = () => crypto.randomUUID();
+export function PlatformProvisioning() {
+  const client = useQueryClient(); const [name, setName] = useState(""); const [company, setCompany] = useState(""); const [selected, setSelected] = useState<Tenant | null>(null); const [notice, setNotice] = useState("");
+  const tenants = useQuery({ queryKey: ["platform-tenants"], queryFn: async () => (await axiosClient.get<{ data: { items: Tenant[] } }>(API_ENDPOINTS.platformTenants)).data.data.items });
+  const createTenant = useMutation({ mutationFn: async () => (await axiosClient.post(API_ENDPOINTS.platformTenants, { name, status: "active" }, { headers: { "Idempotency-Key": key() } })).data, onSuccess: () => { setName(""); setNotice("Tenant created."); client.invalidateQueries({ queryKey: ["platform-tenants"] }); } });
+  const createCompany = useMutation({ mutationFn: async () => (await axiosClient.post(API_ENDPOINTS.platformTenantCompanies(selected!.tenant_id), { name: company, status: "active" }, { headers: { "Idempotency-Key": key() } })).data, onSuccess: () => { setCompany(""); setNotice("Company created. Assign a tenant owner before customer use."); } });
+  return <PermissionGate permission="platform.tenants.manage" fallback={<div className="standard-state standard-state-forbidden"><h2>Platform administration only</h2><p>This control plane is not part of a customer workspace.</p></div>}><div className="settings-hub"><div className="eyebrow">Platform control plane</div><h1>Customer provisioning</h1><p>Create customer tenants and their first company without coupling them to EGI Holding.</p><section className="access-invite-card"><strong>Create tenant</strong><div className="access-form"><input aria-label="Tenant name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Customer legal/workspace name" /><button className="context-action" disabled={!name.trim() || createTenant.isPending} onClick={() => createTenant.mutate()}>Create tenant</button></div></section><section className="access-list-card"><div className="section-heading"><div><div className="eyebrow">Customer tenants</div><h2>Provisioned workspaces</h2></div></div>{tenants.isLoading && <p>Loading tenants...</p>}{tenants.error && <p role="alert">Tenants are unavailable.</p>}{tenants.data?.map((tenant) => <div className="access-row" key={tenant.tenant_id}><div><strong>{tenant.name}</strong><span>{tenant.tenant_id} · {tenant.status}</span></div><button className="source-preview-button" onClick={() => setSelected(tenant)}>Select</button></div>)}</section>{selected && <section className="access-invite-card"><strong>Company for {selected.name}</strong><div className="access-form"><input aria-label="Company name" value={company} onChange={(event) => setCompany(event.target.value)} placeholder="Company name" /><button className="context-action" disabled={!company.trim() || createCompany.isPending} onClick={() => createCompany.mutate()}>Create company</button></div></section>}{notice && <p role="status">{notice}</p>}</div></PermissionGate>;
+}

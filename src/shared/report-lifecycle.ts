@@ -58,6 +58,8 @@ async function transitionReport(reportId: string, action: "review" | "approve" |
   if (!reportId.trim() || !Number.isInteger(version) || version < 1) throw new Error("A valid report ID and current version are required");
   const actor = useSessionStore.getState().actor;
   if (!actor || actor.actorType !== "human") throw Object.assign(new Error("Report lifecycle actions require a human actor"), { code: "HUMAN_ACTOR_REQUIRED" });
+  const permission = action === "review" ? "report.review.submit" : action === "approve" ? "report.approve" : "report.share";
+  if (!useSessionStore.getState().permissions.includes(permission)) throw Object.assign(new Error("The current role is not authorized for this report action"), { code: "FORBIDDEN" });
   const endpoint = action === "review" ? API_ENDPOINTS.reportReview(reportId) : action === "approve" ? API_ENDPOINTS.reportApprove(reportId) : API_ENDPOINTS.reportShare(reportId);
   const response = await axiosClient.post<ApiSuccessResponse<ReportLifecycleDto>>(endpoint, { ...body, version }, { headers: { "Idempotency-Key": `report-${action}-${reportId}-${version}-${crypto.randomUUID()}`, "If-Match": String(version) } });
   return response.data.data;

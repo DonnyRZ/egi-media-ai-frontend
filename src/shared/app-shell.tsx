@@ -15,6 +15,7 @@ import { CompleteIssueControl } from "@/shared/complete-issue-control";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import type { ApiSuccessResponse, CompanyOptionListDto } from "@/shared/types/api.types";
+import { PermissionGate } from "@/shared/permission-guard";
 
 const IssueDetailDrawer = dynamic(() => import("@/shared/issue-detail-drawer").then((module) => module.IssueDetailDrawer), {
   ssr: false,
@@ -59,10 +60,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [query, setQuery] = useState("");
   const sidebarRef = useRef<HTMLElement>(null);
   const { isMobileNavOpen, setMobileNavOpen, openIssueId } = useUiStore();
-  const { activeCompanyId, setActiveCompanyId, clearSession } = useSessionStore();
+  const { activeCompanyId, setActiveCompanyId, setAccessToken, clearSession, actor } = useSessionStore();
   const companiesQuery = useQuery({ queryKey: ["authorized-companies"], queryFn: readCompanies, enabled: true, staleTime: 60_000, retry: false });
   const companies = companiesQuery.data ?? (activeCompanyId ? [{ company_id: activeCompanyId, name: null }] : []);
   const currentCompany = activeCompanyId ?? "workspace";
+  const profileName = actor?.fullName || actor?.email || "Workspace user";
+  const profileRole = actor?.role ? actor.role.replaceAll("_", " ") : "Workspace member";
+  const profileInitial = profileName.trim().slice(0, 1).toUpperCase() || "U";
+  async function switchCompany(company: { company_id: string; tenant_id?: string }) {
+    if (!company.tenant_id || company.company_id === activeCompanyId) { setActiveCompanyId(company.company_id); setCompanyOpen(false); return; }
+    try {
+      const response = await axiosClient.post<{ data: { access_token: string } }>(API_ENDPOINTS.authSwitchContext, { tenant_id: company.tenant_id, company_id: company.company_id });
+      setAccessToken(response.data.data.access_token); setActiveCompanyId(company.company_id); setCompanyOpen(false); window.location.reload();
+    } catch { setCompanyOpen(false); }
+  }
   useFocusTrap(sidebarRef, isMobileNavOpen, () => setMobileNavOpen(false));
   useEffect(() => {
     function closeMenus(event: KeyboardEvent) {
@@ -94,6 +105,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="sidebar-bottom">
           <Link href="/settings" className={`sidebar-link ${pathname.startsWith("/settings") ? "is-active" : ""}`} onClick={() => setMobileNavOpen(false)}><Icon name="settings" /><span>Settings</span></Link>
+          {actor?.role === "platform_superadmin" && <Link href="/settings/platform" className={`sidebar-link ${pathname.startsWith("/settings/platform") ? "is-active" : ""}`} onClick={() => setMobileNavOpen(false)}><Icon name="user" /><span>Provisioning</span></Link>}
+          <PermissionGate permission="tenant.users.manage"><Link href="/settings/access" className={`sidebar-link ${pathname.startsWith("/settings/access") ? "is-active" : ""}`} onClick={() => setMobileNavOpen(false)}><Icon name="user" /><span>Access</span></Link></PermissionGate>
           <div className="sidebar-status"><span className="status-pulse" /> Intelligence engine ready</div>
         </div>
       </aside>
@@ -106,12 +119,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="company-avatar">{currentCompany === "workspace" ? "W" : currentCompany.slice(0, 1).toUpperCase()}</span>
               <span><small>Company scope</small><strong>{currentCompany === "workspace" ? "Workspace company" : currentCompany}</strong></span><Icon name="chevron" size={15} />
             </button>
-            {companyOpen && <div className="shell-popover company-popover">{companies.map((company) => <button key={company.company_id} onClick={() => { setActiveCompanyId(company.company_id); setCompanyOpen(false); }}><span className="company-avatar small">{company.company_id.slice(0, 1).toUpperCase()}</span><span><strong>{company.name || company.company_id}</strong><small>Authorized scope</small></span></button>)}</div>}
+            {companyOpen && <div className="shell-popover company-popover">{companies.map((company) => <button key={company.company_id} onClick={() => switchCompany(company)}><span className="company-avatar small">{company.company_id.slice(0, 1).toUpperCase()}</span><span><strong>{company.name || company.company_id}</strong><small>Authorized scope</small></span></button>)}</div>}
           </div>
           <div className="header-actions">
             <label className="global-search"><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search intelligence..." aria-label="Global search" /><kbd>⌘ K</kbd></label>
             <div className="header-menu-wrap"><button className="shell-icon-button notification-button" onClick={() => setNotificationOpen(!notificationOpen)} aria-label="Notifications" aria-expanded={notificationOpen}><Icon name="bell" /><span /></button>{notificationOpen && <div className="shell-popover notification-popover"><strong>Notifications</strong><p>Your intelligence feed is ready for review.</p><Link href="/alerts" onClick={() => setNotificationOpen(false)}>Open alerts <Icon name="arrow" size={14} /></Link></div>}</div>
-            <div className="header-menu-wrap"><button className="profile-button" onClick={() => setUserOpen(!userOpen)} aria-expanded={userOpen}><span className="profile-avatar">E</span><span className="profile-copy"><strong>Executive user</strong><small>Human reviewer</small></span><Icon name="chevron" size={15} /></button>{userOpen && <div className="shell-popover user-popover"><button><Icon name="user" size={16} /> Profile</button><button onClick={clearSession}><Icon name="logout" size={16} /> Sign out</button></div>}</div>
+            <div className="header-menu-wrap"><button className="profile-button" onClick={() => setUserOpen(!userOpen)} aria-expanded={userOpen}><span className="profile-avatar">{profileInitial}</span><span className="profile-copy"><strong>{profileName}</strong><small>{profileRole}</small></span><Icon name="chevron" size={15} /></button>{userOpen && <div className="shell-popover user-popover"><button><Icon name="user" size={16} /> Profile</button><button onClick={clearSession}><Icon name="logout" size={16} /> Sign out</button></div>}</div>
           </div>
         </header>
         <main className="shell-content" key={pathname}><div className="shell-page-enter">{children}</div></main>

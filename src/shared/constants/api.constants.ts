@@ -1,6 +1,15 @@
 export const API_ENDPOINTS = {
+  authLogin: "/api/v1/auth/login",
+  authSignup: "/api/v1/auth/signup",
+  authSwitchContext: "/api/v1/auth/switch-context",
+  authSession: "/api/v1/auth/session",
   executiveSummary: "/api/v1/dashboard/executive-summary",
   companies: "/api/v1/companies",
+  tenantCompanies: "/api/v1/tenant/companies",
+  tenantCompany: (companyId: string) => `/api/v1/tenant/companies/${companyId}`,
+  platformTenants: "/api/v1/platform/tenants",
+  platformTenantCompanies: (tenantId: string) => `/api/v1/platform/tenants/${tenantId}/companies`,
+  platformTenantOwner: (tenantId: string) => `/api/v1/platform/tenants/${tenantId}/owner`,
   issues: "/api/v1/issues",
   issueById: (issueId: string) => `/api/v1/issues/${issueId}`,
   articleSource: (articleId: string) => `/api/v1/articles/${articleId}/source`,
@@ -12,6 +21,7 @@ export const API_ENDPOINTS = {
   inboxEmailRead: (emailId: string) => `/api/v1/inbox/emails/${emailId}/read`,
   companyContext: (companyId: string) => `/api/v1/companies/${companyId}/context`,
   companyContextDraft: "/api/v1/company-context/draft",
+  companyContextPdfDraft: "/api/v1/company-context/draft/pdf",
   companyContextDraftById: (draftId: string) => `/api/v1/company-context/drafts/${draftId}`,
   companyContextDraftReview: (draftId: string) => `/api/v1/company-context/drafts/${draftId}/submit-review`,
   companyContextDraftApprove: (draftId: string) => `/api/v1/company-context/drafts/${draftId}/approve`,
@@ -24,4 +34,6 @@ export const API_ENDPOINTS = {
   reportShare: (reportId: string) => `/api/v1/reports/${reportId}/share`,
   reportNarrativeRewrite: (reportId: string, narrativeId: string) =>
     `/api/v1/reports/${reportId}/narrative/${narrativeId}/rewrite`,
+  tenantMemberships: "/api/v1/tenant/memberships",
+  tenantMembership: (membershipId: string) => `/api/v1/tenant/memberships/${membershipId}`,
 } as const;

@@ -40,4 +40,16 @@ function ReportDetail({ reportId, onClose }: { reportId: string; onClose: () => 
   return <div className="source-preview-layer"><section className="source-preview-card report-detail-card" role="dialog" aria-label="Report detail"><button className="drawer-close" onClick={onClose} aria-label="Close report detail">×</button><div className="eyebrow">Report detail</div><h2>{report.report_type} report</h2><p>{report.period_start} → {report.period_end}</p><div className="issue-list-meta"><span className={`status-badge status-${report.review_status}`}>{report.review_status}</span><span>Version {report.version}</span><span>Context v{report.context_version}</span></div><section><h3>Executive narrative</h3><JsonSection value={query.data.narrative} /></section><section><h3>Validated issue pack</h3><JsonSection value={report.selected_issue_pack} /></section><section><h3>Metrics and provenance</h3><JsonSection value={report.metrics} /></section><section><h3>Activity history</h3><JsonSection value={query.data.activity} /></section><div className="context-flow-actions">{report.review_status === "draft" && <button className="context-action" disabled={command.isPending} onClick={() => command.mutate({ action: "review", report })}>Submit review</button>}{report.review_status === "in_review" && <button className="context-action" disabled={command.isPending} onClick={() => command.mutate({ action: "approve", report })}>Approve</button>}{report.review_status === "approved" && <button className="context-action" disabled={command.isPending} onClick={() => command.mutate({ action: "share", report })}>Share</button>}</div>{notice && <div className="preference-notice" role="status">{notice}</div>}</section></div>;
 }
 
-function JsonSection({ value }: { value: unknown }) { if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) return <p>No validated data available.</p>; return <pre className="report-json">{JSON.stringify(value, null, 2)}</pre>; }
+function JsonSection({ value }: { value: unknown }) {
+  if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) return <p>No validated data available.</p>;
+  return <div className="report-readable-value"><ReadableValue value={value} /> </div>;
+}
+
+function ReadableValue({ value }: { value: unknown }) {
+  if (value === null || value === undefined || value === "") return <span className="report-empty-value">Not provided</span>;
+  if (Array.isArray(value)) return <ul className="report-value-list">{value.map((item, index) => <li key={index}><ReadableValue value={item} /></li>)}</ul>;
+  if (typeof value === "object") return <dl className="report-value-object">{Object.entries(value as Record<string, unknown>).map(([key, item]) => <div key={key}><dt>{humanize(key)}</dt><dd><ReadableValue value={item} /></dd></div>)}</dl>;
+  return <span>{String(value)}</span>;
+}
+
+function humanize(value: string) { return value.replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }

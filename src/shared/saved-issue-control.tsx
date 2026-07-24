@@ -15,6 +15,7 @@ async function unsave(issueId: string) { const response = await axiosClient.dele
 
 export function SavedIssueControl({ issueId }: { issueId: string }) {
   const companyId = useSessionStore((state) => state.activeCompanyId);
+  const allowed = useSessionStore((state) => state.permissions.includes("issue.save"));
   const client = useQueryClient();
   const query = useQuery({ queryKey: ["saved-issues", companyId], queryFn: readSaved, enabled: Boolean(companyId), staleTime: 15_000 });
   const saved = Boolean(query.data?.items.some((item) => item.issue_id === issueId));
@@ -28,6 +29,7 @@ export function SavedIssueControl({ issueId }: { issueId: string }) {
       void client.invalidateQueries({ queryKey: ["saved-issues", companyId] });
     },
   });
+  if (!allowed) return null;
   return <button className={`source-preview-button ${effectiveSaved ? "is-active" : ""}`} aria-pressed={effectiveSaved} disabled={mutation.isPending || query.isLoading} onClick={() => mutation.mutate()}>{mutation.isPending ? "Saving..." : effectiveSaved ? "Unsave issue" : "Save issue"}</button>;
 }
 

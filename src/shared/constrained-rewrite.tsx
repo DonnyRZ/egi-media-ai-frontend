@@ -23,12 +23,14 @@ export interface ConstrainedRewriteProps {
 }
 
 export function ConstrainedRewritePanel(props: ConstrainedRewriteProps) {
+  const canRewrite = useSessionStore((state) => state.permissions.includes("report.rewrite"));
   const [instruction, setInstruction] = useState("");
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [result, setResult] = useState<RewriteResponse | null>(null);
   const [error, setError] = useState<RewriteUiError | null>(null);
   const canPreview = Boolean(props.spanId && props.currentText.trim() && instruction.trim() && instruction.length <= 1000);
+  if (!canRewrite) return null;
 
   function preview() { if (!canPreview) { setError({ code: "VALIDATION_ERROR", message: "Select a valid span and enter an instruction up to 1000 characters.", conflict: false }); return; } setError(null); setResult(null); setIsPreviewing(true); }
   async function apply() { setIsApplying(true); setError(null); try { const data = await applyConstrainedRewrite(props, instruction); setResult(data); setIsPreviewing(false); props.onApplied?.(data); } catch (caught) { setError(toRewriteError(caught)); } finally { setIsApplying(false); } }

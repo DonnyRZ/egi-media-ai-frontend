@@ -107,14 +107,10 @@ function DisplayLanguageBody() {
   return (
     <div className="preference-page">
       <div className="preference-heading">
-        <div>
-          <div className="eyebrow">Display language</div>
-          <h1>Display language</h1>
-          <p>
-            Choose the language used for newly generated AI output. Existing drafts, issues, and reports are not
-            rewritten.
-          </p>
-        </div>
+        <p>
+          Choose the language used for newly generated AI output. Existing drafts, issues, and reports are not
+          rewritten.
+        </p>
         <span className={`preference-state ${confirmed && !isDirty ? "is-confirmed" : "is-closed"}`}>
           <i />
           {confirmed && !isDirty ? "Backend confirmed" : "Fail-closed · not confirmed"}

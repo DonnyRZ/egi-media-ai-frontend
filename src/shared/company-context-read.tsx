@@ -92,11 +92,7 @@ function CompanyContextBody({
   return (
     <div className="context-page">
       <div className="context-page-heading">
-        <div>
-          <div className="eyebrow">Company intelligence</div>
-          <h1>Company Context</h1>
-          <p>The approved context currently guiding relevance and issue analysis.</p>
-        </div>
+        <p>The approved context currently guiding relevance and issue analysis.</p>
         <span className="context-status-badge">{context.status}</span>
       </div>
       <section className="context-hero-card">

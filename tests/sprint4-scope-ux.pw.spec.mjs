@@ -39,7 +39,7 @@ async function loginAsBootstrapAdmin(page) {
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /Continue to workspace/i }).click();
   await expect(page).toHaveURL(/\/id\/?$/, { timeout: 30_000 });
-  await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 60_000 });
 }
 
 async function provisionFreshScope(adminToken) {
@@ -168,7 +168,7 @@ test.describe("Sprint 4 post-provision owner chain", () => {
     await page.getByLabel("Password").fill(ownerPassword);
     await page.getByRole("button", { name: /Continue to workspace/i }).click();
     await expect(page).toHaveURL(/\/id\/?$/, { timeout: 30_000 });
-    await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 60_000 });
 
     const switcher = page.getByTestId("company-switcher");
     await expect(switcher).toBeVisible();

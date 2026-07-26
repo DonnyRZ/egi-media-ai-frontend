@@ -114,11 +114,7 @@ function AlertPreferencesBody() {
   return (
     <div className="preference-page">
       <div className="preference-heading">
-        <div>
-          <div className="eyebrow">Alert controls</div>
-          <h1>Alert preferences</h1>
-          <p>Choose how the backend may evaluate direct high alerts and daily digest eligibility.</p>
-        </div>
+        <p>Choose how the backend may evaluate direct high alerts and daily digest eligibility.</p>
         <span className={`preference-state ${confirmed && !isDirty ? "is-confirmed" : "is-closed"}`}>
           <i />
           {confirmed && !isDirty ? "Backend confirmed" : "Fail-closed · not confirmed"}

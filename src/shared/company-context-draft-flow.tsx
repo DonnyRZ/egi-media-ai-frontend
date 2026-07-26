@@ -3,6 +3,7 @@
 import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Check } from "lucide-react";
 
 import {
   DEFAULT_COMPANY_LANGUAGE,
@@ -267,7 +268,6 @@ function CompanyContextDraftFlowBody() {
     <div className="context-flow-page">
       <div className="context-flow-heading">
         <div>
-          <div className="eyebrow">Company intelligence</div>
           <h1>Build Company Context</h1>
           <p>
             {canApprove
@@ -408,7 +408,7 @@ function CompanyContextDraftFlowBody() {
 function ProgressStep({ label, active, status }: { label: string; active?: boolean; status: string }) {
   return (
     <div className={`context-progress-step ${active ? "is-active" : ""}`}>
-      <span>{active ? "✓" : "·"}</span>
+      <span>{active ? <Check size={13} strokeWidth={2.5} aria-hidden="true" /> : "·"}</span>
       <strong>{label}</strong>
       <small>{active ? (status === "approved" ? "active" : status.replace("_", " ")) : "Pending"}</small>
     </div>

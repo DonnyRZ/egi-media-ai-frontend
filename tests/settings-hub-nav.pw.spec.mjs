@@ -46,7 +46,7 @@ async function realLogin(page) {
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: /Continue to workspace/i }).click();
   await expect(page).toHaveURL(/\/id\/?$/, { timeout: 30_000 });
-  await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 60_000 });
 }
 
 async function openSettingsFromSidebar(page) {

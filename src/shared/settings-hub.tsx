@@ -215,9 +215,9 @@ export function SettingsHub() {
 
   return (
     <div className="settings-hub">
-      <div className="eyebrow">Workspace controls</div>
-      <h1>Settings</h1>
-      <p>Manage the company intelligence context and alert evaluation preferences.</p>
+      <div className="page-context">
+        <span className="supporting-text">Manage the company intelligence context and alert evaluation preferences.</span>
+      </div>
       <div className="settings-hub-grid">
         {CARDS.map((card) => (
           <HubCardControl

@@ -38,12 +38,8 @@ function SavedIssuesBody() {
 
   return (
     <div className="issues-page">
-      <div className="issues-heading">
-        <div>
-          <div className="eyebrow">Personal workspace</div>
-          <h1>Saved Issues</h1>
-          <p>Your company-scoped issue bookmarks.</p>
-        </div>
+      <div className="page-context">
+        <span className="supporting-text">Your company-scoped issue bookmarks.</span>
       </div>
       {query.isLoading ? (
         <div className="issues-empty">
@@ -78,10 +74,12 @@ function SavedIssuesBody() {
               <div className="issue-list-copy">
                 <h2>{item.issue.title}</h2>
                 <p>{item.issue.one_liner || "No one-liner available."}</p>
-                <div className="issue-list-meta">
-                  <span className={`priority-badge priority-${item.issue.priority ?? "rendah"}`}>{item.issue.priority ?? "unprioritized"}</span>
-                  <span>Saved {new Date(item.saved_at).toLocaleDateString()}</span>
+                <div className="badge-row issue-list-meta">
+                  <span className={`meta-tag meta-priority meta-priority-${item.issue.priority ?? "rendah"}`}>{item.issue.priority ?? "unprioritized"}</span>
                 </div>
+              </div>
+              <div className="issue-list-side">
+                <span className="timestamp">Saved {new Date(item.saved_at).toLocaleDateString()}</span>
               </div>
             </article>
           ))}

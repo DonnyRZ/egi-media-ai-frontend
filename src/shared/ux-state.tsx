@@ -2,6 +2,7 @@
 
 import { isAxiosError } from "axios";
 import type { ReactNode } from "react";
+import { AlertCircle, Ban, Clock, GitCompareArrows, Hourglass, Inbox, LogIn, RefreshCw, WifiOff, type LucideIcon } from "lucide-react";
 
 export type StandardStateKind = "loading" | "empty" | "error" | "unauthorized" | "forbidden" | "conflict" | "stale" | "provider" | "offline" | "timeout";
 
@@ -36,14 +37,15 @@ function stateKindForCode(code: string, transportCode?: string): StandardErrorSt
 }
 
 export function StandardState({ kind, title, message, onRetry, retryLabel = "Try again", children }: { kind: StandardStateKind; title?: string; message?: string; onRetry?: () => void; retryLabel?: string; children?: ReactNode }) {
-  if (kind === "loading") return <div className="standard-state standard-state-loading" aria-busy="true" aria-live="polite"><div className="standard-loader" /><span>{message ?? "Loading workspace..."}</span></div>;
-  if (kind === "empty") return <div className="standard-state standard-state-empty"><div className="standard-state-mark">○</div><h2>{title ?? "Nothing here yet"}</h2><p>{message ?? "There is no data to show."}</p>{children}</div>;
+  if (kind === "loading") return <div className="standard-state standard-state-loading" aria-busy="true" aria-live="polite"><div className="loading-brand"><div className="brand-mark">E</div><div><strong>EGI Media</strong><span>AI Intelligence</span></div></div><div className="standard-loader" /><span>{message ?? "Loading workspace..."}</span></div>;
+  if (kind === "empty") return <div className="standard-state standard-state-empty"><div className="standard-state-mark"><Inbox size={20} strokeWidth={2} aria-hidden="true" /></div><h2>{title ?? "Nothing here yet"}</h2><p>{message ?? "There is no data to show."}</p>{children}</div>;
   const copy = stateCopy(kind);
-  return <div className={`standard-state standard-state-${kind}`} role="alert"><div className="standard-state-mark">{copy.mark}</div><span className="standard-state-eyebrow">{copy.eyebrow}</span><h2>{title ?? copy.title}</h2><p>{message ?? copy.message}</p>{onRetry && <button className="context-action" onClick={onRetry}>{retryLabel}</button>}{children}</div>;
+  const Mark = copy.mark;
+  return <div className={`standard-state standard-state-${kind}`} role="alert"><div className="standard-state-mark"><Mark size={20} strokeWidth={2} aria-hidden="true" /></div><span className="standard-state-eyebrow">{copy.eyebrow}</span><h2>{title ?? copy.title}</h2><p>{message ?? copy.message}</p>{onRetry && <button className="context-action" onClick={onRetry}>{retryLabel}</button>}{children}</div>;
 }
 
 function stateCopy(kind: Exclude<StandardStateKind, "loading" | "empty">) {
-  const copy = { error: ["Error", "Something went wrong.", "!"], unauthorized: ["Sign in required", "Your session is not authorized.", "↗"], forbidden: ["Access restricted", "You do not have permission for this scope.", "⊘"], conflict: ["Version conflict", "This data changed while you were working.", "↻"], stale: ["Stale data", "This view needs a fresh backend read.", "◷"], provider: ["Provider unavailable", "The AI provider could not complete this operation.", "!"], offline: ["Offline", "Reconnect to continue.", "⌁"], timeout: ["Request timed out", "The backend took too long to respond.", "◌"] } as const;
+  const copy: Record<Exclude<StandardStateKind, "loading" | "empty">, readonly [string, string, LucideIcon]> = { error: ["Error", "Something went wrong.", AlertCircle], unauthorized: ["Sign in required", "Your session is not authorized.", LogIn], forbidden: ["Access restricted", "You do not have permission for this scope.", Ban], conflict: ["Version conflict", "This data changed while you were working.", GitCompareArrows], stale: ["Stale data", "This view needs a fresh backend read.", Clock], provider: ["Provider unavailable", "The AI provider could not complete this operation.", RefreshCw], offline: ["Offline", "Reconnect to continue.", WifiOff], timeout: ["Request timed out", "The backend took too long to respond.", Hourglass] };
   const [eyebrow, title, mark] = copy[kind];
   return { eyebrow, title, message: kind === "provider" ? "No unvalidated AI output was applied." : title, mark };
 }

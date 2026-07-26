@@ -50,12 +50,8 @@ function AlertsInboxBody() {
 
   return (
     <div className="issues-page">
-      <div className="issues-heading">
-        <div>
-          <div className="eyebrow">Delivery archive</div>
-          <h1>Alerts</h1>
-          <p>Validated alert delivery events for the active company.</p>
-        </div>
+      <div className="page-context">
+        <span className="supporting-text">Validated alert delivery events for the active company.</span>
       </div>
       {query.isLoading ? (
         <div className="issues-empty">
@@ -79,9 +75,9 @@ function AlertsInboxBody() {
           {query.data.items.map((email) => (
             <article className={`issue-list-card ${email.read ? "" : "is-unread"}`} key={email.email_id}>
               <div className="issue-list-copy">
-                <div className="issue-list-meta">
-                  <span className="status-badge status-berkembang">{email.channel}</span>
-                  <span>{new Date(email.created_at).toLocaleString()}</span>
+                <div className="badge-row issue-list-meta">
+                  <span className="meta-tag">{email.channel.replaceAll("_", " ")}</span>
+                  <span className="timestamp">{new Date(email.created_at).toLocaleString()}</span>
                 </div>
                 <h2>{email.issue_id || "Alert event"}</h2>
                 <p>{email.reason_code || email.status}</p>

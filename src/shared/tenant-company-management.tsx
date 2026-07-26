@@ -58,9 +58,9 @@ export function TenantCompanyManagement() {
       }
     >
       <div className="settings-hub">
-        <div className="eyebrow">Tenant administration</div>
-        <h1>Companies</h1>
-        <p>Create and manage companies inside the current customer tenant. Company data never crosses tenant boundaries.</p>
+        <div className="page-context">
+          <span className="supporting-text">Create and manage companies inside the current customer tenant. Company data never crosses tenant boundaries.</span>
+        </div>
         <section className="access-invite-card">
           <strong>Create company</strong>
           <div className="access-form">

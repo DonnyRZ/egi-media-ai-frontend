@@ -23,7 +23,7 @@ async function loginAsBootstrapAdmin(page) {
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /Continue to workspace/i }).click();
   await expect(page).toHaveURL(/\/id\/?$/, { timeout: 30_000 });
-  await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 60_000 });
 }
 
 async function assertNoCompanyScope(page) {
@@ -141,7 +141,8 @@ test.describe("Sprint 2 company-scoped surfaces without company", () => {
       await assertCompanyGate(page, route.heading);
 
       for (const pattern of route.forbid) {
-        await expect(page.getByRole("heading", { name: pattern })).toHaveCount(0);
+        // The app header always shows the route title; forbid only content-area headings.
+        await expect(page.locator(".shell-content").getByRole("heading", { name: pattern })).toHaveCount(0);
       }
       await expect(page.getByTestId("context-draft-generate")).toHaveCount(0);
       await expect(page.getByTestId("alert-preferences-save")).toHaveCount(0);

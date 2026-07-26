@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 
 import { startTransition, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ArrowRight, Bell, Bookmark, Building2, ChevronDown, FileText, LayoutDashboard, LogOut, Menu, Search, Settings, UserRound, Users, X, type LucideIcon } from "lucide-react";
 
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import { useSessionStore } from "@/shared/session-store";
@@ -47,35 +48,60 @@ const IssueDetailDrawer = dynamic(() => import("@/shared/issue-detail-drawer").t
   loading: () => null,
 });
 
-type IconName = "grid" | "bell" | "file" | "bookmark" | "settings" | "search" | "chevron" | "menu" | "close" | "user" | "logout" | "arrow";
+type IconName = "grid" | "bell" | "file" | "bookmark" | "settings" | "search" | "chevron" | "menu" | "close" | "user" | "users" | "building" | "logout" | "arrow";
 async function readCompanies() { const response = await axiosClient.get<ApiSuccessResponse<CompanyOptionListDto>>(API_ENDPOINTS.companies); return response.data.data.items; }
 
+const ICONS: Record<IconName, LucideIcon> = {
+  grid: LayoutDashboard,
+  bell: Bell,
+  file: FileText,
+  bookmark: Bookmark,
+  settings: Settings,
+  search: Search,
+  chevron: ChevronDown,
+  menu: Menu,
+  close: X,
+  user: UserRound,
+  users: Users,
+  building: Building2,
+  logout: LogOut,
+  arrow: ArrowRight,
+};
+
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
-  const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
-  const paths: Record<IconName, ReactNode> = {
-    grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
-    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
-    file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h6" /></>,
-    bookmark: <path d="M6 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18l-6-4-6 4z" />,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.8 1.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.1h-2.6v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1-1.8-1.8.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H6.4v-2.6h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 1.8-1.8.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V4.4H15v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1 1.8 1.8-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1V13h-.1a1.7 1.7 0 0 0-1.5 1z" /></>,
-    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
-    chevron: <path d="m7 10 5 5 5-5" />,
-    menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
-    close: <><path d="m6 6 12 12M18 6 6 18" /></>,
-    user: <><circle cx="12" cy="8" r="3" /><path d="M5 21a7 7 0 0 1 14 0" /></>,
-    logout: <><path d="M10 17l5-5-5-5M15 12H3M21 3v18" /></>,
-    arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
-  };
-  return <svg {...common}>{paths[name]}</svg>;
+  const Component = ICONS[name];
+  return <Component size={size} strokeWidth={2} aria-hidden="true" />;
 }
 
 const navigation = [
   { href: "/", label: "Executive Summary", icon: "grid" as const },
   { href: "/issues", label: "All Issues", icon: "search" as const },
-  { href: "/alerts", label: "Alerts", icon: "bell" as const, badge: "—" },
+  { href: "/alerts", label: "Alerts", icon: "bell" as const },
   { href: "/reports", label: "Reports", icon: "file" as const },
   { href: "/saved", label: "Saved", icon: "bookmark" as const },
 ];
+
+const PAGE_TITLES: Array<[prefix: string, title: string]> = [
+  ["/settings/company-context/draft", "Company Context"],
+  ["/settings/company-context", "Company Context"],
+  ["/settings/alert-preferences", "Alert preferences"],
+  ["/settings/display-language", "Display language"],
+  ["/settings/companies", "Companies"],
+  ["/settings/platform", "Provisioning"],
+  ["/settings/access", "Access"],
+  ["/settings", "Settings"],
+  ["/issues", "All Issues"],
+  ["/alerts", "Alerts"],
+  ["/reports", "Reports"],
+  ["/saved", "Saved Issues"],
+];
+
+function pageTitleFor(path: string) {
+  for (const [prefix, title] of PAGE_TITLES) {
+    if (path.startsWith(prefix)) return title;
+  }
+  return "Executive Summary";
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -231,7 +257,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon name={item.icon} />
                 <span>{item.label}</span>
-                {item.badge && <em>{item.badge}</em>}
               </SidebarLink>
             );
           })}
@@ -251,7 +276,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               className={`sidebar-link ${activePath.startsWith("/settings/platform") ? "is-active" : ""}`}
               onNavigate={handleNavigate}
             >
-              <Icon name="user" />
+              <Icon name="building" />
               <span>Provisioning</span>
             </SidebarLink>
           )}
@@ -261,7 +286,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               className={`sidebar-link ${activePath.startsWith("/settings/access") ? "is-active" : ""}`}
               onNavigate={handleNavigate}
             >
-              <Icon name="user" />
+              <Icon name="users" />
               <span>Access</span>
             </SidebarLink>
           </PermissionGate>
@@ -271,7 +296,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="shell-main">
         <header className="app-header">
-          <button className="shell-icon-button mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Icon name="menu" /></button>
+          <div className="header-left">
+            <button className="shell-icon-button mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Icon name="menu" /></button>
+            <h1 className="page-title">{pageTitleFor(activePath)}</h1>
           <div className="company-switcher-wrap">
             <button className="company-switcher" onClick={() => setCompanyOpen(!companyOpen)} aria-expanded={companyOpen} data-testid="company-switcher" data-has-company={hasCompany ? "true" : "false"}>
               <span className="company-avatar">{hasCompany ? currentCompany.slice(0, 1).toUpperCase() : "—"}</span>
@@ -331,6 +358,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 )}
               </div>
             )}
+          </div>
           </div>
           <div className="header-actions">
             <label className="global-search"><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search intelligence..." aria-label="Global search" /><kbd>⌘ K</kbd></label>

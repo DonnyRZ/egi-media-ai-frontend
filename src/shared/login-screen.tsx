@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
+import { ArrowRight, Info } from "lucide-react";
 import { useRouter } from "@/i18n/navigation";
 import { useSessionStore } from "@/shared/session-store";
 import { axiosClient } from "@/shared/lib/axios-client";
@@ -119,16 +120,18 @@ export function LoginScreen() {
                 {error}
               </span>
             )}
-            <button className="auth-primary-button login-submit" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Signing in..." : "Continue to workspace"}
-              <span>→</span>
-            </button>
+            <div className="login-actions">
+              <button className="auth-primary-button login-submit" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Signing in..." : "Continue to workspace"}
+                <span><ArrowRight size={16} strokeWidth={2} aria-hidden="true" /></span>
+              </button>
+              <button className="login-secondary-button" type="button" onClick={() => router.push("/signup")}>
+                Create a new account
+              </button>
+            </div>
           </form>
-          <button className="context-action" onClick={() => router.push("/signup")}>
-            Create a new account
-          </button>
           <div className="login-note">
-            <span>i</span>
+            <span><Info size={12} strokeWidth={2} aria-hidden="true" /></span>
             <p>Workspace access is controlled by tenant membership. Signup alone does not grant company data access.</p>
           </div>
         </div>

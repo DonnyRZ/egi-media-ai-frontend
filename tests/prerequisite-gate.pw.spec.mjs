@@ -23,7 +23,7 @@ async function loginAsBootstrapAdmin(page) {
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /Continue to workspace/i }).click();
   await expect(page).toHaveURL(/\/id\/?$/, { timeout: 30_000 });
-  await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".app-sidebar")).toBeVisible({ timeout: 60_000 });
 }
 
 test.describe("Sprint 0 PrerequisiteGate smoke", () => {

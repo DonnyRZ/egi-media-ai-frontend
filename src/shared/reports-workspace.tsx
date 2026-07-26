@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { X } from "lucide-react";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
@@ -44,12 +45,8 @@ function ReportsWorkspaceBody() {
 
   return (
     <div className="issues-page">
-      <div className="issues-heading">
-        <div>
-          <div className="eyebrow">Executive reporting</div>
-          <h1>Reports</h1>
-          <p>Review validated report drafts before approval and sharing.</p>
-        </div>
+      <div className="page-context">
+        <span className="supporting-text">Review validated report drafts before approval and sharing.</span>
       </div>
       {query.isLoading ? (
         <div className="issues-empty"><h2>Loading reports...</h2></div>
@@ -96,7 +93,7 @@ function ReportsWorkspaceBody() {
   );
 }
 
-function ReportCard({ report, onOpen }: { report: ReportDto; onOpen: () => void }) { return <article className="issue-list-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === "Enter" && onOpen()}><div className="issue-list-copy"><div className="issue-list-meta"><span className={`status-badge status-${report.review_status}`}>{report.review_status}</span><span>{report.report_type}</span></div><h2>{report.period_start} → {report.period_end}</h2><p>Version {report.version} · {report.selected_issue_pack.length} validated issue items</p></div></article>; }
+function ReportCard({ report, onOpen }: { report: ReportDto; onOpen: () => void }) { return <article className="issue-list-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === "Enter" && onOpen()}><div className="issue-list-copy"><div className="badge-row issue-list-meta"><span className={`meta-tag meta-review-${report.review_status}`}>{report.review_status.replaceAll("_", " ")}</span><span className="meta-tag">{report.report_type}</span></div><h2>{report.period_start} → {report.period_end}</h2><p>Version {report.version} · {report.selected_issue_pack.length} validated issue items</p></div></article>; }
 
 function ReportDetail({ reportId, onClose }: { reportId: string; onClose: () => void }) {
   const companyId = useSessionStore((state) => state.activeCompanyId); const client = useQueryClient(); const [notice, setNotice] = useState<string | null>(null); const recipientRef = process.env.NEXT_PUBLIC_REPORT_SHARE_RECIPIENT_REF?.trim() || "";
@@ -105,7 +102,7 @@ function ReportDetail({ reportId, onClose }: { reportId: string; onClose: () => 
   if (query.isLoading) return <div className="source-preview-layer"><section className="source-preview-card" role="dialog" aria-label="Report detail"><h2>Loading report...</h2></section></div>;
   if (query.isError || !query.data) return <div className="source-preview-layer"><section className="source-preview-card" role="dialog" aria-label="Report detail"><h2>Report unavailable</h2><button onClick={onClose}>Close</button></section></div>;
   const report = query.data.report;
-  return <div className="source-preview-layer"><section className="source-preview-card report-detail-card" role="dialog" aria-label="Report detail"><button className="drawer-close" onClick={onClose} aria-label="Close report detail">×</button><div className="eyebrow">Report detail</div><h2>{report.report_type} report</h2><p>{report.period_start} → {report.period_end}</p><div className="issue-list-meta"><span className={`status-badge status-${report.review_status}`}>{report.review_status}</span><span>Version {report.version}</span><span>Context v{report.context_version}</span></div><section><h3>Executive narrative</h3><JsonSection value={query.data.narrative} /></section><section><h3>Validated issue pack</h3><JsonSection value={report.selected_issue_pack} /></section><section><h3>Metrics and provenance</h3><JsonSection value={report.metrics} /></section><section><h3>Activity history</h3><JsonSection value={query.data.activity} /></section><div className="context-flow-actions">{report.review_status === "draft" && <button className="context-action" disabled={command.isPending} onClick={() => command.mutate({ action: "review", report })}>Submit review</button>}{report.review_status === "in_review" && <button className="context-action" disabled={command.isPending} onClick={() => command.mutate({ action: "approve", report })}>Approve</button>}{report.review_status === "approved" && <button className="context-action" disabled={command.isPending} onClick={() => command.mutate({ action: "share", report })}>Share</button>}</div>{notice && <div className="preference-notice" role="status">{notice}</div>}</section></div>;
+  return <div className="source-preview-layer"><section className="source-preview-card report-detail-card" role="dialog" aria-label="Report detail"><button className="drawer-close" onClick={onClose} aria-label="Close report detail"><X size={18} strokeWidth={2} aria-hidden="true" /></button><div className="eyebrow">Report detail</div><h2>{report.report_type} report</h2><p>{report.period_start} → {report.period_end}</p><div className="badge-row issue-list-meta"><span className={`meta-tag meta-review-${report.review_status}`}>{report.review_status.replaceAll("_", " ")}</span><span className="meta-tag">Version {report.version}</span><span className="meta-tag">Context v{report.context_version}</span></div><section><h3>Executive narrative</h3><JsonSection value={query.data.narrative} /></section><section><h3>Validated issue pack</h3><JsonSection value={report.selected_issue_pack} /></section><section><h3>Metrics and provenance</h3><JsonSection value={report.metrics} /></section><section><h3>Activity history</h3><JsonSection value={query.data.activity} /></section><div className="context-flow-actions">{report.review_status === "draft" && <button className="context-action" disabled={command.isPending} onClick={() => command.mutate({ action: "review", report })}>Submit review</button>}{report.review_status === "in_review" && <button className="context-action" disabled={command.isPending} onClick={() => command.mutate({ action: "approve", report })}>Approve</button>}{report.review_status === "approved" && <button className="context-action" disabled={command.isPending} onClick={() => command.mutate({ action: "share", report })}>Share</button>}</div>{notice && <div className="preference-notice" role="status">{notice}</div>}</section></div>;
 }
 
 function JsonSection({ value }: { value: unknown }) {

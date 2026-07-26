@@ -6,8 +6,10 @@ import { useDeferredValue, useState } from "react";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { mapIssueList } from "@/shared/api-mappers";
+import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
 import { useUiStore } from "@/shared/ui-store";
+import { useWorkspaceScope } from "@/shared/workspace-scope";
 import type { ApiSuccessResponse, IssueListDto } from "@/shared/types/api.types";
 import { buildIssueListParams, type IssuePeriod } from "@/shared/api-query";
 
@@ -20,6 +22,22 @@ async function fetchIssues(companyId: string, params: { q: string; priority: Pri
 }
 
 export function IssuesList() {
+  const scope = useWorkspaceScope();
+
+  return (
+    <ScopeRequired
+      require="company"
+      scope={scope}
+      title="Company scope required for issues"
+      reason="Issues are company-scoped. Without an active company, an empty list would look like “no issues yet” — that is not the case here."
+      nextStep="Pick a company in the header switcher. If none exist, provision one under Platform, then return here."
+    >
+      <IssuesListBody />
+    </ScopeRequired>
+  );
+}
+
+function IssuesListBody() {
   const companyId = useSessionStore((state) => state.activeCompanyId);
   const openIssue = useUiStore((state) => state.openIssue);
   const [search, setSearch] = useState("");

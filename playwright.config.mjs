@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Scope UX anti-miss matrix (Sprints 0–4): `npm run test:scope-ux`
+// Requires FE :3001 + BE :5003; specs bootstrap admin from ../egi-media-ai-backend/.env
+
 export default defineConfig({
   testDir: "./tests",
   testMatch: "**/*.pw.spec.mjs",
@@ -11,7 +14,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
-  use: { baseURL: "http://127.0.0.1:3001", trace: "retain-on-failure", screenshot: "only-on-failure" },
+  use: { baseURL: "http://localhost:3001", trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: { command: "npm.cmd run dev -- --hostname 127.0.0.1 --port 3001", url: "http://127.0.0.1:3001/id/login", reuseExistingServer: !process.env.CI, timeout: 120_000 },
+  webServer: { command: "npm.cmd run dev -- --hostname localhost --port 3001", url: "http://localhost:3001/id/login", reuseExistingServer: !process.env.CI, timeout: 180_000 },
 });

@@ -11,3 +11,9 @@ out/
 coverage/
 playwright-report/
 test-results/
+
+# local build / audit / probe artifacts
+*.tsbuildinfo
+scripts/_*
+_*-probe*.cjs
+_audit-out/

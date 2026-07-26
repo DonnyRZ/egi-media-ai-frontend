@@ -4,67 +4,429 @@ import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import {
+  DEFAULT_COMPANY_LANGUAGE,
+  resolveCompanyLanguage,
+  type CompanyLanguage,
+} from "@/shared/company-language";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
+import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
-import type { ApiSuccessResponse, CompanyContextDto } from "@/shared/types/api.types";
+import { useWorkspaceScope } from "@/shared/workspace-scope";
+import type { ApiSuccessResponse, CompanyContextDto, LanguagePreferenceDto } from "@/shared/types/api.types";
 
 type SourceMode = "pdf" | "url" | "text";
 type DraftStatus = "draft" | "in_review" | "approved";
-type Draft = { draft_id: string; company_id: string; status: DraftStatus; is_effective: boolean; revision: number; result: { status?: string; context?: Record<string, unknown> }; review: { submitted_by: string | null; submitted_at: string | null; approved_by: string | null; approved_at: string | null; note: string | null }; created_at: string; updated_at: string };
+type Draft = {
+  draft_id: string;
+  company_id: string;
+  status: DraftStatus;
+  is_effective: boolean;
+  revision: number;
+  result: { status?: string; context?: Record<string, unknown> };
+  review: {
+    submitted_by: string | null;
+    submitted_at: string | null;
+    approved_by: string | null;
+    approved_at: string | null;
+    note: string | null;
+  };
+  created_at: string;
+  updated_at: string;
+};
 
-async function createDraft(companyId: string, mode: SourceMode, sourceValue: string) { const source = mode === "url" ? { type: "url", url: sourceValue } : { type: "text", text: sourceValue }; const response = await axiosClient.post<ApiSuccessResponse<{ draft: Draft }>>(API_ENDPOINTS.companyContextDraft, { source, extraction_language: "id" }, { headers: { "Idempotency-Key": key("create") } }); return response.data.data.draft; }
-async function createPdfDraft(file: File) {
+async function createDraft(
+  companyId: string,
+  mode: SourceMode,
+  sourceValue: string,
+  extractionLanguage: CompanyLanguage,
+) {
+  const source = mode === "url" ? { type: "url", url: sourceValue } : { type: "text", text: sourceValue };
+  const response = await axiosClient.post<ApiSuccessResponse<{ draft: Draft }>>(
+    API_ENDPOINTS.companyContextDraft,
+    { source, extraction_language: extractionLanguage },
+    { headers: { "Idempotency-Key": key("create") } },
+  );
+  return response.data.data.draft;
+}
+async function createPdfDraft(file: File, extractionLanguage: CompanyLanguage) {
   if (file.size > 10 * 1024 * 1024) throw new Error("The PDF must be 10 MB or smaller.");
   if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) throw new Error("Select a PDF company profile.");
   const form = new FormData();
   form.append("file", file);
-  form.append("extraction_language", "id");
-  const response = await axiosClient.post<ApiSuccessResponse<{ draft: Draft }>>(API_ENDPOINTS.companyContextPdfDraft, form, { headers: { "Content-Type": undefined, "Idempotency-Key": key("pdf") }, timeout: 180_000 });
+  form.append("extraction_language", extractionLanguage);
+  const response = await axiosClient.post<ApiSuccessResponse<{ draft: Draft }>>(API_ENDPOINTS.companyContextPdfDraft, form, {
+    headers: { "Content-Type": undefined, "Idempotency-Key": key("pdf") },
+    timeout: 180_000,
+  });
   return response.data.data.draft;
 }
-async function readDraft(draftId: string) { const response = await axiosClient.get<ApiSuccessResponse<Draft>>(API_ENDPOINTS.companyContextDraftById(draftId)); return response.data.data; }
-async function editDraft(draft: Draft, fields: Record<string, unknown>, note: string) { const response = await axiosClient.patch<ApiSuccessResponse<Draft>>(API_ENDPOINTS.companyContextDraftById(draft.draft_id), { fields, review_note: note || null }, { headers: { "If-Match": String(draft.revision), "Idempotency-Key": key("edit") } }); return response.data.data; }
-async function submitReview(draft: Draft, note: string) { const response = await axiosClient.post<ApiSuccessResponse<Draft>>(API_ENDPOINTS.companyContextDraftReview(draft.draft_id), { review_note: note || null }, { headers: { "If-Match": String(draft.revision), "Idempotency-Key": key("review") } }); return response.data.data; }
-async function approveDraft(draft: Draft, note: string) { const response = await axiosClient.post<ApiSuccessResponse<{ draft: Draft; effective_context: CompanyContextDto }>>(API_ENDPOINTS.companyContextDraftApprove(draft.draft_id), { approval_note: note || null }, { headers: { "If-Match": String(draft.revision), "Idempotency-Key": key("approve") } }); return response.data.data; }
-async function readEffectiveContext(companyId: string) { const response = await axiosClient.get<ApiSuccessResponse<CompanyContextDto>>(API_ENDPOINTS.companyContext(companyId)); return response.data.data; }
-function key(action: string) { return `company-context-${action}-${crypto.randomUUID()}`; }
+async function readDraft(draftId: string) {
+  const response = await axiosClient.get<ApiSuccessResponse<Draft>>(API_ENDPOINTS.companyContextDraftById(draftId));
+  return response.data.data;
+}
+async function editDraft(draft: Draft, fields: Record<string, unknown>, note: string) {
+  const response = await axiosClient.patch<ApiSuccessResponse<Draft>>(
+    API_ENDPOINTS.companyContextDraftById(draft.draft_id),
+    { fields, review_note: note || null },
+    { headers: { "If-Match": String(draft.revision), "Idempotency-Key": key("edit") } },
+  );
+  return response.data.data;
+}
+async function approveDraft(draft: Draft, note: string) {
+  const response = await axiosClient.post<ApiSuccessResponse<{ draft: Draft; effective_context: CompanyContextDto }>>(
+    API_ENDPOINTS.companyContextDraftApprove(draft.draft_id),
+    { approval_note: note || null },
+    { headers: { "If-Match": String(draft.revision), "Idempotency-Key": key("approve") } },
+  );
+  return response.data.data;
+}
+/** Owner/admin Save: persist fields then activate. Requires company_context.approve on the approve step. */
+async function saveAndActivate(draft: Draft, fields: Record<string, unknown>, note: string) {
+  const saved = await editDraft(draft, fields, note);
+  return approveDraft(saved, note);
+}
+async function readEffectiveContext(companyId: string) {
+  const response = await axiosClient.get<ApiSuccessResponse<CompanyContextDto>>(API_ENDPOINTS.companyContext(companyId));
+  return response.data.data;
+}
+function key(action: string) {
+  return `company-context-${action}-${crypto.randomUUID()}`;
+}
 
 export function CompanyContextDraftFlow() {
+  const scope = useWorkspaceScope();
+
+  return (
+    <ScopeRequired
+      require="company"
+      scope={scope}
+      title="Company required for context draft"
+      reason="Context drafts are scoped to an active company. Select a company before generating or reviewing a draft."
+      nextStep="Pick a company in the header switcher. If none exist, provision one under Platform, then return here."
+    >
+      <CompanyContextDraftFlowBody />
+    </ScopeRequired>
+  );
+}
+
+function CompanyContextDraftFlowBody() {
   const companyId = useSessionStore((state) => state.activeCompanyId);
+  const canApprove = useSessionStore((state) => state.permissions.includes("company_context.approve"));
+  const canDraft = useSessionStore((state) => state.permissions.includes("company_context.draft"));
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<SourceMode>("pdf");
   const [sourceValue, setSourceValue] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [fields, setFields] = useState<Record<string, unknown>>({});
-  const [reviewNote, setReviewNote] = useState("");
-  const [approvalNote, setApprovalNote] = useState("");
+  const [saveNote, setSaveNote] = useState("");
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
-  const draftQuery = useQuery({ queryKey: ["company-context-draft", draft?.draft_id], queryFn: () => readDraft(draft!.draft_id), enabled: Boolean(draft?.draft_id), staleTime: 0, refetchOnWindowFocus: false });
-  const effectiveQuery = useQuery({ queryKey: ["company-context", companyId], queryFn: () => readEffectiveContext(companyId as string), enabled: Boolean(companyId && draft?.status === "approved"), staleTime: 0 });
-  const createMutation = useMutation({ mutationFn: () => { if (mode === "pdf") { if (!selectedFile) throw new Error("Select a company profile PDF first"); return createPdfDraft(selectedFile); } if (!companyId || !sourceValue.trim()) throw new Error("Company scope and a URL/text source are required"); return createDraft(companyId, mode, sourceValue.trim()); }, onSuccess: (data) => { setDraft(data); setFields(data.result.context ?? {}); setNotice({ kind: "success", text: "Draft generated from the uploaded source. Review the validated fields before submitting." }); }, onError: (error) => setNotice({ kind: "error", text: errorMessage(error) }) });
-  const editMutation = useMutation({ mutationFn: () => editDraft(currentDraft(), fields, reviewNote), onSuccess: (data) => { setDraft(data); setNotice({ kind: "success", text: "Draft edits saved with a new revision." }); }, onError: (error) => setNotice({ kind: "error", text: errorMessage(error) }) });
-  const reviewMutation = useMutation({ mutationFn: () => submitReview(currentDraft(), reviewNote), onSuccess: (data) => { setDraft(data); setNotice({ kind: "success", text: "Draft submitted for human review." }); }, onError: (error) => setNotice({ kind: "error", text: errorMessage(error) }) });
-  const approveMutation = useMutation({ mutationFn: () => approveDraft(currentDraft(), approvalNote), onSuccess: (data) => { setDraft(data.draft); setNotice({ kind: "success", text: "Context approved. Refreshing effective context from backend." }); queryClient.invalidateQueries({ queryKey: ["company-context", companyId] }); }, onError: (error) => setNotice({ kind: "error", text: errorMessage(error) }) });
+  const languageQuery = useQuery({
+    queryKey: ["language-preference", companyId],
+    queryFn: async () => {
+      const response = await axiosClient.get<ApiSuccessResponse<LanguagePreferenceDto>>(
+        API_ENDPOINTS.languagePreferenceRead(companyId as string),
+      );
+      return response.data.data;
+    },
+    enabled: Boolean(companyId),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const extractionLanguage = resolveCompanyLanguage(languageQuery.data?.language ?? DEFAULT_COMPANY_LANGUAGE);
+  const draftQuery = useQuery({
+    queryKey: ["company-context-draft", draft?.draft_id],
+    queryFn: () => readDraft(draft!.draft_id),
+    enabled: Boolean(draft?.draft_id),
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  });
+  const effectiveQuery = useQuery({
+    queryKey: ["company-context", companyId],
+    queryFn: () => readEffectiveContext(companyId as string),
+    enabled: Boolean(companyId && draft?.status === "approved"),
+    staleTime: 0,
+  });
+  const createMutation = useMutation({
+    mutationFn: () => {
+      if (!companyId) throw new Error("Company scope is required before generating a draft.");
+      if (mode === "pdf") {
+        if (!selectedFile) throw new Error("Select a company profile PDF first");
+        return createPdfDraft(selectedFile, extractionLanguage);
+      }
+      if (!sourceValue.trim()) throw new Error("Company scope and a URL/text source are required");
+      return createDraft(companyId, mode, sourceValue.trim(), extractionLanguage);
+    },
+    onSuccess: (data) => {
+      setDraft(data);
+      setFields(data.result.context ?? {});
+      queryClient.setQueryData(["company-context-draft", data.draft_id], data);
+      setNotice({
+        kind: "success",
+        text: canApprove
+          ? "Draft generated. Edit fields if needed, then Save to make this context active."
+          : "Draft generated. Edit and save the draft. Activation requires a role with approve permission.",
+      });
+    },
+    onError: (error) => setNotice({ kind: "error", text: errorMessage(error) }),
+  });
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const current = currentDraft();
+      if (canApprove && (current.status === "draft" || current.status === "in_review")) {
+        return saveAndActivate(current, fields, saveNote);
+      }
+      if (!canDraft) throw Object.assign(new Error("This action is not authorized for the current company scope."), { code: "FORBIDDEN" });
+      const saved = await editDraft(current, fields, saveNote);
+      return { draft: saved, effective_context: null as CompanyContextDto | null };
+    },
+    onSuccess: (data) => {
+      setDraft(data.draft);
+      queryClient.setQueryData(["company-context-draft", data.draft.draft_id], data.draft);
+      if (data.effective_context) {
+        setNotice({ kind: "success", text: "Context saved and activated." });
+        queryClient.invalidateQueries({ queryKey: ["company-context", companyId] });
+      } else {
+        setNotice({
+          kind: "success",
+          text: "Draft saved. Activation requires a role with company context approve permission.",
+        });
+      }
+    },
+    onError: (error) => setNotice({ kind: "error", text: errorMessage(error) }),
+  });
   // Mutations update the local draft immediately. If-Match must use that latest
   // revision instead of a stale React Query snapshot.
-  const currentDraft = () => { if (!draft) throw new Error("No draft is loaded"); return draft; };
-  const shownDraft = draftQuery.data ?? draft;
-  const isBusy = createMutation.isPending || editMutation.isPending || reviewMutation.isPending || approveMutation.isPending;
+  const currentDraft = () => {
+    if (!draft) throw new Error("No draft is loaded");
+    return draft;
+  };
+  const shownDraft = draft ?? draftQuery.data;
+  const isBusy = createMutation.isPending || saveMutation.isPending;
+  const canGenerate =
+    Boolean(companyId) && !isBusy && (mode === "pdf" ? Boolean(selectedFile) : Boolean(sourceValue.trim()));
+  const isEditable = shownDraft && (shownDraft.status === "draft" || shownDraft.status === "in_review");
+  const saveLabel = canApprove ? "Save" : "Save draft";
 
-  function updateField(keyName: string, value: string) { const existing = fields[keyName]; setFields((current) => ({ ...current, [keyName]: Array.isArray(existing) ? value.split("\n").map((item) => item.trim()).filter(Boolean) : value })); }
-  function refreshDraft() { draftQuery.refetch(); }
-  const sourceInput = mode === "pdf"
-    ? <><input className="context-flow-input" type="file" accept="application/pdf,.pdf" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} /><small className="context-flow-helper">Upload one company profile PDF, up to 10 MB. Text is extracted securely before the AI draft is generated.</small>{selectedFile && <div className="context-pipeline-state"><i />{selectedFile.name}</div>}</>
-    : mode === "url"
-      ? <><input className="context-flow-input" value={sourceValue} onChange={(event) => setSourceValue(event.target.value)} placeholder="https://company.example/about" /><small className="context-flow-helper">The backend will fetch and sanitize the URL.</small></>
-      : <textarea className="context-flow-textarea" value={sourceValue} onChange={(event) => setSourceValue(event.target.value)} placeholder="Paste the approved company context source text here..." />;
+  function updateField(keyName: string, value: string) {
+    const existing = fields[keyName];
+    setFields((current) => ({
+      ...current,
+      [keyName]: Array.isArray(existing) ? value.split("\n").map((item) => item.trim()).filter(Boolean) : value,
+    }));
+  }
+  function refreshDraft() {
+    draftQuery.refetch().then((result) => {
+      if (result.data) {
+        setDraft(result.data);
+        setFields(result.data.result.context ?? {});
+      }
+    });
+  }
+  const sourceInput =
+    mode === "pdf" ? (
+      <>
+        <input
+          className="context-flow-input"
+          type="file"
+          accept="application/pdf,.pdf"
+          onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+        />
+        <small className="context-flow-helper">
+          Upload one company profile PDF, up to 10 MB. Text is extracted securely before the AI draft is generated.
+        </small>
+        {selectedFile && (
+          <div className="context-pipeline-state">
+            <i />
+            {selectedFile.name}
+          </div>
+        )}
+      </>
+    ) : mode === "url" ? (
+      <>
+        <input
+          className="context-flow-input"
+          value={sourceValue}
+          onChange={(event) => setSourceValue(event.target.value)}
+          placeholder="https://company.example/about"
+        />
+        <small className="context-flow-helper">The backend will fetch and sanitize the URL.</small>
+      </>
+    ) : (
+      <textarea
+        className="context-flow-textarea"
+        value={sourceValue}
+        onChange={(event) => setSourceValue(event.target.value)}
+        placeholder="Paste the approved company context source text here..."
+      />
+    );
 
-  return <div className="context-flow-page"><div className="context-flow-heading"><div><div className="eyebrow">Company intelligence</div><h1>Build Company Context</h1><p>Upload a company profile PDF or use a URL. The AI draft remains non-effective until a human approves it.</p></div><span className="context-flow-safety">Human approval required</span></div><section className="context-flow-card source-card"><div className="context-flow-step"><span>01</span><div><span className="context-label">Source input</span><h2>Where should the draft come from?</h2></div></div><div className="source-mode-tabs"><button className={mode === "pdf" ? "is-active" : ""} onClick={() => setMode("pdf")}>Company PDF</button><button className={mode === "url" ? "is-active" : ""} onClick={() => setMode("url")}>URL</button><button className={mode === "text" ? "is-active" : ""} onClick={() => setMode("text")}>Text fallback</button></div>{sourceInput}<button className="context-action" disabled={isBusy || (mode === "pdf" ? !selectedFile : !sourceValue.trim() || !companyId)} onClick={() => createMutation.mutate()}>{createMutation.isPending ? "Extracting and generating..." : "Generate draft"}</button></section>{shownDraft && <><div className="context-progress"><ProgressStep label="Draft" active status={shownDraft.status} /><ProgressStep label="Review" active={shownDraft.status === "in_review" || shownDraft.status === "approved"} status={shownDraft.status} /><ProgressStep label="Approved" active={shownDraft.status === "approved"} status={shownDraft.status} /></div><section className="context-flow-card"><div className="context-flow-step"><span>02</span><div><span className="context-label">Draft revision {shownDraft.revision}</span><h2>Review generated fields</h2></div><span className={`context-status-badge flow-status-${shownDraft.status}`}>{shownDraft.status.replace("_", " ")}</span></div><div className="context-pipeline-state"><i />{shownDraft.result.status === "insufficient_data" ? "Backend marked the source insufficient for a complete context." : "Pipeline output is available for human review."}<button onClick={refreshDraft}>Refresh</button></div><div className="context-edit-grid">{Object.entries(fields).map(([keyName, value]) => <label className="context-edit-field" key={keyName}><span>{humanize(keyName)}</span>{Array.isArray(value) ? <textarea value={value.join("\n")} onChange={(event) => updateField(keyName, event.target.value)} /> : <textarea value={String(value ?? "")} onChange={(event) => updateField(keyName, event.target.value)} />}</label>)}</div>{shownDraft.status === "draft" && <><label className="preference-field"><span>Review note</span><textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} maxLength={1000} placeholder="Optional note for the human review record" /></label><div className="context-flow-actions"><button className="source-preview-button" disabled={isBusy} onClick={() => editMutation.mutate()}>Save edits</button><button className="context-action" disabled={isBusy} onClick={() => reviewMutation.mutate()}>Submit for review</button></div></>}{shownDraft.status === "in_review" && <><label className="preference-field"><span>Approval note</span><textarea value={approvalNote} onChange={(event) => setApprovalNote(event.target.value)} maxLength={1000} placeholder="Optional note for the human review record" /></label><div className="context-flow-actions"><button className="context-action" disabled={isBusy} onClick={() => approveMutation.mutate()}>Approve context</button></div></>}{shownDraft.status === "approved" && <div className="context-approved-state"><strong>Approved and effective</strong><span>The effective context has been refreshed from the backend.</span></div>}</section></>}{effectiveQuery.data && <section className="context-effective-refresh"><span className="context-label">Effective context refreshed</span><strong>Version {effectiveQuery.data.version}</strong><span>Updated {formatDate(effectiveQuery.data.updated_at)}</span></section>}{notice && <div className={`preference-notice ${notice.kind}`} role="status">{notice.text}</div>}</div>;
+  return (
+    <div className="context-flow-page">
+      <div className="context-flow-heading">
+        <div>
+          <div className="eyebrow">Company intelligence</div>
+          <h1>Build Company Context</h1>
+          <p>
+            {canApprove
+              ? "Upload a company profile PDF or use a URL, then Save to activate the effective context."
+              : "Upload a company profile PDF or use a URL to generate a draft. Saving keeps the draft; activation requires approve permission."}
+          </p>
+        </div>
+      </div>
+      <section className="context-flow-card source-card">
+        <div className="context-flow-step">
+          <span>01</span>
+          <div>
+            <span className="context-label">Source input</span>
+            <h2>Where should the draft come from?</h2>
+          </div>
+        </div>
+        <div className="source-mode-tabs">
+          <button className={mode === "pdf" ? "is-active" : ""} onClick={() => setMode("pdf")}>
+            Company PDF
+          </button>
+          <button className={mode === "url" ? "is-active" : ""} onClick={() => setMode("url")}>
+            URL
+          </button>
+          <button className={mode === "text" ? "is-active" : ""} onClick={() => setMode("text")}>
+            Text fallback
+          </button>
+        </div>
+        {sourceInput}
+        <small className="context-flow-helper" data-testid="context-draft-language-note">
+          Existing drafts are not retranslated when you change Display language. Only newly generated drafts use the current preference.
+        </small>
+        <button
+          className="context-action"
+          data-testid="context-draft-generate"
+          disabled={!canGenerate}
+          onClick={() => {
+            if (!companyId) return;
+            createMutation.mutate();
+          }}
+        >
+          {createMutation.isPending ? "Extracting and generating..." : "Generate draft"}
+        </button>
+      </section>
+      {shownDraft && (
+        <>
+          <div className="context-progress">
+            <ProgressStep label="Generated" active status={shownDraft.status} />
+            <ProgressStep label="Active" active={shownDraft.status === "approved"} status={shownDraft.status} />
+          </div>
+          <section className="context-flow-card">
+            <div className="context-flow-step">
+              <span>02</span>
+              <div>
+                <span className="context-label">Draft revision {shownDraft.revision}</span>
+                <h2>Review generated fields</h2>
+              </div>
+              <span className={`context-status-badge flow-status-${shownDraft.status}`}>
+                {shownDraft.status === "approved" ? "active" : shownDraft.status.replace("_", " ")}
+              </span>
+            </div>
+            <div className="context-pipeline-state">
+              <i />
+              {shownDraft.result.status === "insufficient_data"
+                ? "Backend marked the source insufficient for a complete context."
+                : shownDraft.status === "approved"
+                  ? "This draft has been activated as the effective company context."
+                  : "Pipeline output is ready. Edit fields, then Save."}
+              <button onClick={refreshDraft}>Refresh</button>
+            </div>
+            <div className="context-edit-grid">
+              {Object.entries(fields).map(([keyName, value]) => (
+                <label className="context-edit-field" key={keyName}>
+                  <span>{humanize(keyName)}</span>
+                  {Array.isArray(value) ? (
+                    <textarea
+                      value={value.join("\n")}
+                      onChange={(event) => updateField(keyName, event.target.value)}
+                      disabled={!isEditable || isBusy}
+                    />
+                  ) : (
+                    <textarea
+                      value={String(value ?? "")}
+                      onChange={(event) => updateField(keyName, event.target.value)}
+                      disabled={!isEditable || isBusy}
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+            {isEditable && (
+              <>
+                <label className="preference-field">
+                  <span>Note</span>
+                  <textarea
+                    value={saveNote}
+                    onChange={(event) => setSaveNote(event.target.value)}
+                    maxLength={1000}
+                    placeholder="Optional note for the save record"
+                  />
+                </label>
+                <div className="context-flow-actions">
+                  <button
+                    className="context-action"
+                    data-testid="context-draft-save"
+                    disabled={isBusy || (!canApprove && !canDraft)}
+                    onClick={() => saveMutation.mutate()}
+                  >
+                    {saveMutation.isPending ? "Saving..." : saveLabel}
+                  </button>
+                </div>
+              </>
+            )}
+            {shownDraft.status === "approved" && (
+              <div className="context-approved-state">
+                <strong>Active</strong>
+                <span>The effective context has been refreshed from the backend.</span>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+      {effectiveQuery.data && (
+        <section className="context-effective-refresh">
+          <span className="context-label">Effective context refreshed</span>
+          <strong>Version {effectiveQuery.data.version}</strong>
+          <span>Updated {formatDate(effectiveQuery.data.updated_at)}</span>
+        </section>
+      )}
+      {notice && (
+        <div className={`preference-notice ${notice.kind}`} role="status">
+          {notice.text}
+        </div>
+      )}
+    </div>
+  );
 }
 
-function ProgressStep({ label, active, status }: { label: string; active?: boolean; status: string }) { return <div className={`context-progress-step ${active ? "is-active" : ""}`}><span>{active ? "✓" : "·"}</span><strong>{label}</strong><small>{active ? status.replace("_", " ") : "Pending"}</small></div>; }
-function humanize(value: string) { return value.replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
-function formatDate(value: string) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date); }
-function errorMessage(error: unknown) { if (isAxiosError<{ error?: { message?: string; code?: string } }>(error)) { const code = error.response?.data?.error?.code; if (code === "VERSION_CONFLICT") return "This draft is stale. Refresh the draft before editing or approving."; if (code === "UNAUTHORIZED" || code === "FORBIDDEN") return "This action is not authorized for the current company scope."; return error.response?.data?.error?.message ?? "The Company Context pipeline could not complete."; } return error instanceof Error ? error.message : "The Company Context pipeline could not complete."; }
+function ProgressStep({ label, active, status }: { label: string; active?: boolean; status: string }) {
+  return (
+    <div className={`context-progress-step ${active ? "is-active" : ""}`}>
+      <span>{active ? "✓" : "·"}</span>
+      <strong>{label}</strong>
+      <small>{active ? (status === "approved" ? "active" : status.replace("_", " ")) : "Pending"}</small>
+    </div>
+  );
+}
+function humanize(value: string) {
+  return value.replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+function formatDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+function errorMessage(error: unknown) {
+  if (isAxiosError<{ error?: { message?: string; code?: string } }>(error)) {
+    const code = error.response?.data?.error?.code;
+    if (code === "VERSION_CONFLICT") return "This draft is stale. Refresh the draft before saving.";
+    if (code === "UNAUTHORIZED" || code === "FORBIDDEN") return "This action is not authorized for the current company scope.";
+    return error.response?.data?.error?.message ?? "The Company Context pipeline could not complete.";
+  }
+  return error instanceof Error ? error.message : "The Company Context pipeline could not complete.";
+}

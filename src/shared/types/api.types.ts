@@ -1,3 +1,7 @@
+import type { CompanyLanguage } from "@/shared/company-language";
+
+export type { CompanyLanguage };
+
 export interface ApiMeta {
   request_id?: string | null;
   correlation_id?: string | null;
@@ -21,7 +25,7 @@ export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
 export interface CompanyOptionDto { company_id: string; tenant_id?: string; name: string | null; }
 export interface CompanyOptionListDto { items: CompanyOptionDto[]; }
 export interface AuthSessionDto { actor: { id: string; email: string | null; type: "human" | "service" | "ai_worker"; role: string | null; membership_id: string | null }; tenant_id: string | null; company_id: string | null; role: string | null; permissions: string[]; authorized_companies: Array<CompanyOptionDto & { role?: string }> | string[]; }
-export interface LoginDto { access_token: string; token_type: "Bearer"; actor: { id: string; email: string; role: string | null; type: "human" | "service" | "ai_worker" }; tenant_id?: string | null; company_id?: string | null; authorized_companies?: Array<CompanyOptionDto & { tenant_id?: string; role?: string }>; }
+export interface LoginDto { access_token: string; token_type: "Bearer"; actor: { id: string; email: string; role: string | null; type: "human" | "service" | "ai_worker" }; tenant_id?: string | null; company_id?: string | null; permissions?: string[]; authorized_companies?: Array<CompanyOptionDto & { tenant_id?: string; role?: string }>; }
 export interface MembershipDto { membership_id: string; user_id: string; tenant_id: string; company_id: string | null; role: string; status: string; version: number; permissions: string[]; }
 export interface MembershipListDto { items: MembershipDto[]; meta: PaginationMeta; }
 
@@ -69,6 +73,10 @@ export interface AlertPreferenceDto {
   daily_digest_enabled: boolean;
   timezone: string;
   quiet_hours: { start: string; end: string } | null;
+}
+
+export interface LanguagePreferenceDto {
+  language: CompanyLanguage;
 }
 
 export interface SavedIssueDto { saved_id: string; issue_id: string; saved_at: string; issue: IssueCardDto; }

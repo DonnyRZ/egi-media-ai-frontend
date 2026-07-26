@@ -3,6 +3,7 @@ import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { getMessages, setRequestLocale } from "next-intl/server";
 
 import { QueryProvider } from "@/shared/providers/QueryProvider";
+import { WorkspaceShell } from "@/shared/workspace-shell";
 import { routing } from "@/i18n/routing";
 
 import "../globals.css";
@@ -16,5 +17,15 @@ export default async function LocaleLayout({ children, params }: { children: Rea
   if (!hasLocale(routing.locales, locale)) return null;
   setRequestLocale(locale);
   const messages = await getMessages();
-  return <html lang={locale}><body><NextIntlClientProvider messages={messages}><QueryProvider>{children}</QueryProvider></NextIntlClientProvider></body></html>;
+  return (
+    <html lang={locale}>
+      <body>
+        <NextIntlClientProvider messages={messages}>
+          <QueryProvider>
+            <WorkspaceShell>{children}</WorkspaceShell>
+          </QueryProvider>
+        </NextIntlClientProvider>
+      </body>
+    </html>
+  );
 }

@@ -6,7 +6,10 @@ import { useState } from "react";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
+import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
+import { useUiStore } from "@/shared/ui-store";
+import { useWorkspaceScope } from "@/shared/workspace-scope";
 import type { ApiSuccessResponse } from "@/shared/types/api.types";
 
 type Period = "24jam" | "7hari" | "30hari";
@@ -19,6 +22,22 @@ async function fetchExecutiveSummary(period: Period) {
 }
 
 export function ExecutiveSummary() {
+  const scope = useWorkspaceScope();
+
+  return (
+    <ScopeRequired
+      require="company"
+      scope={scope}
+      title="Company scope required for Executive Summary"
+      reason="Executive Summary is company-scoped. Without an active company, there is no signal set to rank — this is not an empty period."
+      nextStep="Pick a company in the header switcher. If none exist, provision one under Platform, then return here."
+    >
+      <ExecutiveSummaryBody />
+    </ScopeRequired>
+  );
+}
+
+function ExecutiveSummaryBody() {
   const companyId = useSessionStore((state) => state.activeCompanyId);
   const [period, setPeriod] = useState<Period>("24jam");
   const query = useQuery({ queryKey: ["executive-summary", companyId, period], queryFn: () => fetchExecutiveSummary(period), enabled: Boolean(companyId), staleTime: 30_000, retry: 1 });
@@ -27,7 +46,8 @@ export function ExecutiveSummary() {
 }
 
 function SummaryContent({ data, period }: { data: ExecutiveSummaryDto; period: Period }) {
-  return <><div className="summary-meta-row"><span>{periodLabel(period)} · {formatDate(data.startAt)} — {formatDate(data.endAt)}</span><span className="backend-ranking-note"><i /> Ranked by intelligence engine · Top {data.top5_limit}</span></div>{data.items.length === 0 ? <SummaryEmpty /> : <div className="summary-grid">{data.items.map((issue, index) => <article className={`summary-issue-card priority-edge-${issue.priority}`} key={issue.issueId}><div className="summary-card-top"><div className="summary-rank-lockup"><span className="issue-rank">{String(index + 1).padStart(2, "0")}</span><span className="rank-caption">Signal rank</span></div><div className="summary-badges"><PriorityBadge value={issue.priority} /><StatusBadge value={issue.status} /></div></div><h2>{issue.title}</h2><p>{issue.oneLiner || "No one-liner is available for this issue yet."}</p><footer><time dateTime={issue.lastDevelopedAt}>Updated {formatDate(issue.lastDevelopedAt)}</time><span className="summary-arrow" aria-hidden="true">↗</span></footer></article>)}</div>}</>;
+  const openIssue = useUiStore((state) => state.openIssue);
+  return <><div className="summary-meta-row"><span>{periodLabel(period)} · {formatDate(data.startAt)} — {formatDate(data.endAt)}</span><span className="backend-ranking-note"><i /> Ranked by intelligence engine · Top {data.top5_limit}</span></div>{data.items.length === 0 ? <SummaryEmpty /> : <div className="summary-grid">{data.items.map((issue, index) => <article className={`summary-issue-card priority-edge-${issue.priority}`} key={issue.issueId} role="button" tabIndex={0} onClick={() => openIssue(issue.issueId)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openIssue(issue.issueId); } }}><div className="summary-card-top"><div className="summary-rank-lockup"><span className="issue-rank">{String(index + 1).padStart(2, "0")}</span><span className="rank-caption">Signal rank</span></div><div className="summary-badges"><PriorityBadge value={issue.priority} /><StatusBadge value={issue.status} /></div></div><h2>{issue.title}</h2><p>{issue.oneLiner || "No one-liner is available for this issue yet."}</p><footer><time dateTime={issue.lastDevelopedAt}>Updated {formatDate(issue.lastDevelopedAt)}</time><span className="summary-arrow" aria-hidden="true">↗</span></footer></article>)}</div>}</>;
 }
 
 function PriorityBadge({ value }: { value: SummaryItem["priority"] }) { return <span className={`priority-badge priority-${value}`}>{value}</span>; }

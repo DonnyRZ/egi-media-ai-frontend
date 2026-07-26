@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev --turbopack -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -12,7 +12,8 @@
     "test:a11y": "playwright test tests/accessibility.pw.spec.mjs --workers=1",
     "test:visual": "playwright test tests/visual.pw.spec.mjs --workers=1",
     "test:visual:update": "playwright test tests/visual.pw.spec.mjs --update-snapshots",
-    "test:contract": "node --no-warnings=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/environment-validation.test.mjs tests/contract-verification.test.mjs"
+    "test:contract": "node --no-warnings=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test tests/environment-validation.test.mjs tests/contract-verification.test.mjs",
+    "test:scope-ux": "playwright test tests/prerequisite-gate.pw.spec.mjs tests/sprint1-scope-ux.pw.spec.mjs tests/sprint2-scope-ux.pw.spec.mjs tests/sprint3-scope-ux.pw.spec.mjs tests/sprint4-scope-ux.pw.spec.mjs tests/settings-hub-nav.pw.spec.mjs tests/platform-provisioning-access.pw.spec.mjs --workers=1"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",

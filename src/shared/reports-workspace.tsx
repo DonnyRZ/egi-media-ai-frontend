@@ -4,8 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
+import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
 import { approveReport, shareReport, submitReportForReview } from "@/shared/report-lifecycle";
+import { useWorkspaceScope } from "@/shared/workspace-scope";
 import type { ApiSuccessResponse, ReportDetailDto, ReportListDto, ReportDto } from "@/shared/types/api.types";
 
 type ReportTypeFilter = "all" | "harian" | "mingguan" | "bulanan";
@@ -18,14 +20,80 @@ async function readReports(reportType: ReportTypeFilter, reviewStatus: ReportSta
 async function readReport(reportId: string) { const response = await axiosClient.get<ApiSuccessResponse<ReportDetailDto>>(API_ENDPOINTS.reportById(reportId)); return response.data.data; }
 
 export function ReportsWorkspace() {
+  const scope = useWorkspaceScope();
+
+  return (
+    <ScopeRequired
+      require="company"
+      scope={scope}
+      title="Company scope required for reports"
+      reason="Reports are company-scoped. Without an active company, “no reports yet” would look like the customer has zero drafts — that is not the case here."
+      nextStep="Pick a company in the header switcher. If none exist, provision one under Platform, then return here."
+    >
+      <ReportsWorkspaceBody />
+    </ScopeRequired>
+  );
+}
+
+function ReportsWorkspaceBody() {
   const companyId = useSessionStore((state) => state.activeCompanyId);
   const [selected, setSelected] = useState<string | null>(null);
   const [reportType, setReportType] = useState<ReportTypeFilter>("all");
   const [reviewStatus, setReviewStatus] = useState<ReportStatusFilter>("all");
   const query = useQuery({ queryKey: ["reports", companyId, reportType, reviewStatus], queryFn: () => readReports(reportType, reviewStatus), enabled: Boolean(companyId), staleTime: 15_000 });
-  if (query.isLoading) return <div className="issues-empty"><h2>Loading reports...</h2></div>;
-  if (query.isError) return <div className="issues-empty"><h2>Reports unavailable</h2><p>The report read API could not be loaded.</p><button className="context-action" onClick={() => query.refetch()}>Try again</button></div>;
-  return <div className="reports-workspace"><div className="issues-toolbar"><select value={reportType} onChange={(event) => setReportType(event.target.value as ReportTypeFilter)} aria-label="Filter reports by period"><option value="all">All report periods</option><option value="harian">Daily</option><option value="mingguan">Weekly</option><option value="bulanan">Monthly</option></select><select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value as ReportStatusFilter)} aria-label="Filter reports by review status"><option value="all">All review statuses</option><option value="draft">Draft</option><option value="in_review">In review</option><option value="needs_review">Needs review</option><option value="approved">Approved</option><option value="shared">Shared</option></select></div>{!query.data?.items.length ? <div className="issues-empty"><h2>No reports yet</h2><p>Reports appear after the backend creates a validated report draft.</p></div> : <div className="issues-list">{query.data.items.map((report) => <ReportCard key={report.report_id} report={report} onOpen={() => setSelected(report.report_id)} />)}</div>}{selected && <ReportDetail reportId={selected} onClose={() => setSelected(null)} />}</div>;
+
+  return (
+    <div className="issues-page">
+      <div className="issues-heading">
+        <div>
+          <div className="eyebrow">Executive reporting</div>
+          <h1>Reports</h1>
+          <p>Review validated report drafts before approval and sharing.</p>
+        </div>
+      </div>
+      {query.isLoading ? (
+        <div className="issues-empty"><h2>Loading reports...</h2></div>
+      ) : query.isError ? (
+        <div className="issues-empty">
+          <h2>Reports unavailable</h2>
+          <p>The report read API could not be loaded.</p>
+          <button className="context-action" onClick={() => query.refetch()}>Try again</button>
+        </div>
+      ) : (
+        <div className="reports-workspace">
+          <div className="issues-toolbar">
+            <select value={reportType} onChange={(event) => setReportType(event.target.value as ReportTypeFilter)} aria-label="Filter reports by period">
+              <option value="all">All report periods</option>
+              <option value="harian">Daily</option>
+              <option value="mingguan">Weekly</option>
+              <option value="bulanan">Monthly</option>
+            </select>
+            <select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value as ReportStatusFilter)} aria-label="Filter reports by review status">
+              <option value="all">All review statuses</option>
+              <option value="draft">Draft</option>
+              <option value="in_review">In review</option>
+              <option value="needs_review">Needs review</option>
+              <option value="approved">Approved</option>
+              <option value="shared">Shared</option>
+            </select>
+          </div>
+          {!query.data?.items.length ? (
+            <div className="issues-empty">
+              <h2>No reports yet</h2>
+              <p>Reports appear after the backend creates a validated report draft.</p>
+            </div>
+          ) : (
+            <div className="issues-list">
+              {query.data.items.map((report) => (
+                <ReportCard key={report.report_id} report={report} onOpen={() => setSelected(report.report_id)} />
+              ))}
+            </div>
+          )}
+          {selected && <ReportDetail reportId={selected} onClose={() => setSelected(null)} />}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ReportCard({ report, onOpen }: { report: ReportDto; onOpen: () => void }) { return <article className="issue-list-card" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(event) => event.key === "Enter" && onOpen()}><div className="issue-list-copy"><div className="issue-list-meta"><span className={`status-badge status-${report.review_status}`}>{report.review_status}</span><span>{report.report_type}</span></div><h2>{report.period_start} → {report.period_end}</h2><p>Version {report.version} · {report.selected_issue_pack.length} validated issue items</p></div></article>; }

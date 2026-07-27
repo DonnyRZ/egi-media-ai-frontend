@@ -66,7 +66,7 @@ function ReportsWorkspaceBody() {
               <option value="bulanan">Monthly</option>
             </select>
             <select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value as ReportStatusFilter)} aria-label="Filter reports by review status">
-              <option value="all">All review statuses</option>
+              <option value="all">All statuses</option>
               <option value="draft">Draft</option>
               <option value="in_review">In review</option>
               <option value="needs_review">Needs review</option>

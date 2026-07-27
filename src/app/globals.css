@@ -129,11 +129,12 @@
 .page-title { color: var(--color-ink); font-family: var(--font-display); font-size: 30px; font-weight: 600; letter-spacing: -.02em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .company-switcher-wrap, .header-menu-wrap { position: relative; }
 .company-switcher, .profile-button, .shell-icon-button { border: 0; background: transparent; color: var(--color-text); cursor: pointer; }
-.company-switcher { display: inline-flex; max-width: 250px; align-items: center; gap: 9px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); padding: 7px 12px 7px 10px; text-align: left; transition: border-color var(--motion-standard) var(--motion-easing), background var(--motion-standard) var(--motion-easing); }
+.company-switcher { display: inline-flex; max-width: 280px; align-items: center; gap: 9px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); padding: 8px 12px 9px 10px; text-align: left; transition: border-color var(--motion-standard) var(--motion-easing), background var(--motion-standard) var(--motion-easing); }
 .company-switcher:hover { border-color: var(--color-border-strong); background: var(--color-canvas); }
-.company-switcher > span:nth-child(2) { display: grid; gap: 1px; min-width: 0; }
-.company-switcher small, .profile-copy small, .company-popover small { color: var(--color-muted); font-size: 12px; }
-.company-switcher strong, .profile-copy strong { color: var(--color-ink); font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.company-switcher > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; line-height: 1.25; }
+.company-switcher small, .profile-copy small, .company-popover small { color: var(--color-muted); font-size: 12px; line-height: 1.2; }
+.company-switcher strong { color: var(--color-ink); font-size: 15px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.profile-copy strong { color: var(--color-ink); font-size: 15px; font-weight: 600; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
 .company-avatar, .profile-avatar { display: grid; flex: 0 0 auto; height: 28px; width: 28px; place-items: center; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-canvas); color: var(--color-muted); font-size: 13px; font-weight: 700; }
 .company-avatar.small { height: 30px; width: 30px; border-radius: 9px; }
 .header-actions { display: flex; align-items: center; gap: 10px; }
@@ -407,14 +408,17 @@
 .issues-page { max-width: var(--content-max); min-width: 0; width: 100%; }
 .issues-scope-badge { color: var(--color-muted); font-size: 13px; font-weight: 500; letter-spacing: .02em; white-space: nowrap; }
 .issues-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) 158px 158px 158px; gap: 10px; }
-.reports-toolbar { grid-template-columns: minmax(13rem, 16rem) minmax(15rem, 18rem); justify-content: start; width: fit-content; max-width: 100%; }
+.reports-toolbar { grid-template-columns: minmax(13rem, 16rem) minmax(12.5rem, 14rem); justify-content: start; width: fit-content; max-width: 100%; }
 .issues-search { display: flex; height: 40px; align-items: center; gap: 9px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); padding: 0 12px; color: var(--color-muted); }
 .issues-search svg { flex: 0 0 auto; }
 .issues-search input, .issues-toolbar select { min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); outline: 0; background: var(--color-surface); color: var(--color-text); font: inherit; font-size: 15px; }
 .issues-search input { flex: 1; border: 0; padding: 0; color: var(--color-ink); }
 .issues-search:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
 .issues-toolbar select {
+  box-sizing: border-box;
   height: 42px;
+  min-height: 42px;
+  line-height: 1.25;
   cursor: pointer;
   color: var(--color-ink);
   font-weight: 500;
@@ -1042,9 +1046,9 @@
   .sidebar-brand strong { font-size: 20px; }
   .global-search { width: clamp(150px, 18vw, 240px); }
   .global-search kbd { display: none; }
-  .company-switcher { max-width: 210px; }
-  .company-switcher strong { max-width: 120px; }
-  .profile-copy strong { max-width: 120px; }
+  .company-switcher { max-width: 260px; }
+  .company-switcher strong { max-width: 170px; }
+  .profile-copy strong { max-width: 220px; }
 }
 
 /* Tier 3: <=1100px — drop secondary header copy before mobile kicks in */
@@ -1053,7 +1057,7 @@
   .shell-main { margin-left: 220px; }
   .page-title { font-size: 21px; }
   .profile-copy { display: none; }
-  .company-switcher strong { max-width: 100px; }
+  .company-switcher strong { max-width: 150px; }
   .global-search { width: clamp(140px, 16vw, 200px); }
   .shell-content { padding: var(--space-5) 18px 34px; }
 }
@@ -1069,11 +1073,15 @@
 
 /* Fixed-column grids that squeezed in the laptop range */
 @media (min-width: 761px) and (max-width: 1280px) {
-  .issues-toolbar { grid-template-columns: minmax(190px, 1fr) repeat(3, minmax(120px, 150px)); }
+  .issues-toolbar:not(.reports-toolbar):not(.news-feed-toolbar) {
+    grid-template-columns: minmax(190px, 1fr) repeat(3, minmax(140px, 170px));
+  }
+  .reports-toolbar { grid-template-columns: minmax(12rem, 15rem) minmax(11rem, 13rem); }
 }
 @media (min-width: 761px) and (max-width: 1080px) {
-  .issues-toolbar { grid-template-columns: 1fr 1fr; }
-  .issues-search { grid-column: span 2; }
+  .issues-toolbar:not(.reports-toolbar):not(.news-feed-toolbar) { grid-template-columns: 1fr 1fr; }
+  .issues-toolbar:not(.reports-toolbar):not(.news-feed-toolbar) .issues-search { grid-column: span 2; }
+  .reports-toolbar { grid-template-columns: 1fr; width: 100%; }
 }
 @media (min-width: 701px) and (max-width: 1180px) {
   .context-meta-grid { grid-template-columns: repeat(2, 1fr); }

@@ -2,8 +2,15 @@
 
 import { isAxiosError } from "axios";
 import { useQuery } from "@tanstack/react-query";
-import { useDeferredValue, useState } from "react";
-import { AlertCircle, ExternalLink, Inbox, Newspaper, Search } from "lucide-react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Inbox, Newspaper, Search } from "lucide-react";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
@@ -92,22 +99,7 @@ function NewsFeedBody() {
         </label>
       </div>
 
-      <nav className="news-feed-tabs" aria-label="News feed channels" data-testid="news-feed-tabs">
-        <div className="news-feed-tabs-track">
-          {NEWS_FEED_CHANNELS.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={entry.id === channel ? "is-active" : undefined}
-              data-channel={entry.id}
-              aria-pressed={entry.id === channel}
-              onClick={() => selectChannel(entry.id)}
-            >
-              {entry.label}
-            </button>
-          ))}
-        </div>
-      </nav>
+      <NewsFeedChannelTabs channel={channel} onSelect={selectChannel} />
 
       <div className="news-feed-meta">
         <span>{label}</span>
@@ -140,6 +132,102 @@ function NewsFeedBody() {
         </div>
       )}
     </div>
+  );
+}
+
+function NewsFeedChannelTabs({
+  channel,
+  onSelect,
+}: {
+  channel: NewsFeedChannelId;
+  onSelect: (channel: NewsFeedChannelId) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateOverflow = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const maxScroll = track.scrollWidth - track.clientWidth;
+    const left = track.scrollLeft;
+    setCanScrollLeft(left > 2);
+    setCanScrollRight(maxScroll > 2 && left < maxScroll - 2);
+  }, []);
+
+  useLayoutEffect(() => {
+    updateOverflow();
+  }, [updateOverflow, channel]);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    updateOverflow();
+    track.addEventListener("scroll", updateOverflow, { passive: true });
+
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateOverflow) : null;
+    resizeObserver?.observe(track);
+
+    window.addEventListener("resize", updateOverflow);
+    return () => {
+      track.removeEventListener("scroll", updateOverflow);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateOverflow);
+    };
+  }, [updateOverflow]);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const active = track.querySelector<HTMLElement>(`button[data-channel="${channel}"]`);
+    active?.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" });
+  }, [channel]);
+
+  function scrollByDirection(direction: -1 | 1) {
+    const track = trackRef.current;
+    if (!track) return;
+    const delta = Math.max(160, Math.round(track.clientWidth * 0.65)) * direction;
+    track.scrollBy({ left: delta, behavior: "smooth" });
+  }
+
+  return (
+    <nav className="news-feed-tabs" aria-label="News feed channels" data-testid="news-feed-tabs">
+      {canScrollLeft ? (
+        <button
+          type="button"
+          className="news-feed-tabs-arrow news-feed-tabs-arrow-left"
+          aria-label="Scroll channels left"
+          onClick={() => scrollByDirection(-1)}
+        >
+          <ChevronLeft size={18} strokeWidth={2} aria-hidden="true" />
+        </button>
+      ) : null}
+      <div ref={trackRef} className="news-feed-tabs-track">
+        {NEWS_FEED_CHANNELS.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            className={entry.id === channel ? "is-active" : undefined}
+            data-channel={entry.id}
+            aria-pressed={entry.id === channel}
+            onClick={() => onSelect(entry.id)}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
+      {canScrollRight ? (
+        <button
+          type="button"
+          className="news-feed-tabs-arrow news-feed-tabs-arrow-right"
+          aria-label="Scroll channels right"
+          onClick={() => scrollByDirection(1)}
+        >
+          <ChevronRight size={18} strokeWidth={2} aria-hidden="true" />
+        </button>
+      ) : null}
+    </nav>
   );
 }
 

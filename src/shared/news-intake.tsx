@@ -25,7 +25,7 @@ import { useWorkspaceScope } from "@/shared/workspace-scope";
 type PullSourceKind = "egi" | "external" | "article";
 type IntakeLocale = "id" | "en" | "uz";
 
-const RUNS_LIMIT = 20;
+const RUNS_PAGE_SIZE = 15;
 
 function createPullIdempotencyKey() {
   return `news-intake-pull-${crypto.randomUUID()}`;
@@ -53,9 +53,9 @@ async function pullArticles(body: NewsIntakePullRequest) {
   return response.data.data;
 }
 
-async function readRuns() {
+async function readRuns(offset: number) {
   const response = await axiosClient.get<ApiSuccessResponse<NewsIntakeRunsPageDto>>(API_ENDPOINTS.newsIntakeRuns, {
-    params: { limit: RUNS_LIMIT },
+    params: { limit: RUNS_PAGE_SIZE, offset },
   });
   return response.data.data;
 }
@@ -89,7 +89,6 @@ export function NewsIntake() {
 
 function NewsIntakeBody() {
   const queryClient = useQueryClient();
-  const actor = useSessionStore((state) => state.actor);
   const companyId = useSessionStore((state) => state.activeCompanyId);
   const canManage = useSessionStore((state) => state.permissions.includes("news.intake.manage"));
   const canTrigger = useSessionStore((state) => state.permissions.includes("news.intake.trigger"));
@@ -99,6 +98,7 @@ function NewsIntakeBody() {
   const [articleId, setArticleId] = useState("");
   const [locale, setLocale] = useState<IntakeLocale>("id");
   const [limit, setLimit] = useState(20);
+  const [runsOffset, setRunsOffset] = useState(0);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
   const statusQuery = useQuery({
@@ -110,8 +110,8 @@ function NewsIntakeBody() {
   });
 
   const runsQuery = useQuery({
-    queryKey: ["news-intake-runs", companyId],
-    queryFn: readRuns,
+    queryKey: ["news-intake-runs", companyId, runsOffset],
+    queryFn: () => readRuns(runsOffset),
     enabled: Boolean(companyId),
     retry: false,
     staleTime: 10_000,
@@ -143,6 +143,7 @@ function NewsIntakeBody() {
           ? `Pull already queued (${data.state}). Check Recent runs for progress.`
           : `Pull accepted (${data.state}). Check Recent runs for progress.`,
       });
+      setRunsOffset(0);
       void queryClient.invalidateQueries({ queryKey: ["news-intake-runs", companyId] });
     },
     onError: (error) => setNotice({ kind: "error", text: newsIntakeError(error, "pull") }),
@@ -153,18 +154,18 @@ function NewsIntakeBody() {
   const statusLine = useMemo(() => formatAutomaticStatus(automatic), [automatic]);
   const pullValid = isPullFormValid({ pullSource, externalMediaId, articleId, limit });
   const pullDisabled = !canTrigger || !pullValid || pullMutation.isPending || statusQuery.isError;
+  const runsPage = runsQuery.data;
+  const runsHasMore = Boolean(runsPage?.has_more);
+  const runsPageNumber = Math.floor(runsOffset / RUNS_PAGE_SIZE) + 1;
 
   return (
     <div className="preference-page news-intake-page" data-testid="news-intake-page">
-      <div className="preference-heading">
-        <p>Bring articles into issues for this company. Automatic intake covers EGI Media on a schedule; manual pulls cover one source at a time.</p>
-      </div>
-
-      <div className="preference-scope">
-        <span>Company scope</span>
-        <strong>{companyId}</strong>
-        <small>{actor?.email ?? "Current authenticated actor"}</small>
-      </div>
+      <header className="news-intake-intro">
+        <p>
+          Bring articles into issues for this company. Automatic intake covers EGI Media on a schedule; manual pulls
+          cover one source at a time.
+        </p>
+      </header>
 
       {statusQuery.isError && (
         <div className="preference-notice error" role="alert" data-testid="news-intake-status-error">
@@ -182,8 +183,8 @@ function NewsIntakeBody() {
         </div>
       )}
 
-      <section className="preference-card" data-testid="news-intake-automatic">
-        <div className="preference-toggle-row">
+      <section className="news-intake-section" data-testid="news-intake-automatic">
+        <div className="news-intake-section-head news-intake-section-head-row">
           <div>
             <span className="context-label">Settings</span>
             <h2>Automatic intake</h2>
@@ -216,8 +217,8 @@ function NewsIntakeBody() {
         </div>
       </section>
 
-      <section className="preference-card" data-testid="news-intake-pull">
-        <div className="preference-section-title">
+      <section className="news-intake-section" data-testid="news-intake-pull">
+        <div className="news-intake-section-head news-intake-section-head-row">
           <div>
             <span className="context-label">Manual</span>
             <h2>Pull articles now</h2>
@@ -380,11 +381,12 @@ function NewsIntakeBody() {
         </div>
       </section>
 
-      <section className="preference-card news-intake-runs" data-testid="news-intake-runs">
-        <div className="preference-section-title">
+      <section className="news-intake-section news-intake-runs" data-testid="news-intake-runs">
+        <div className="news-intake-section-head news-intake-section-head-row">
           <div>
             <span className="context-label">History</span>
             <h2>Recent runs</h2>
+            <p className="news-intake-runs-subtitle">Newest first · {RUNS_PAGE_SIZE} per page</p>
           </div>
           <button
             type="button"
@@ -407,36 +409,65 @@ function NewsIntakeBody() {
             </button>
           </div>
         )}
-        {!runsQuery.isPending && !runsQuery.isError && (runsQuery.data?.items.length ?? 0) === 0 && (
+        {!runsQuery.isPending && !runsQuery.isError && (runsPage?.items.length ?? 0) === 0 && (
           <p className="news-intake-runs-empty" data-testid="news-intake-runs-empty">
             No recent runs for this company yet.
           </p>
         )}
-        {(runsQuery.data?.items.length ?? 0) > 0 && (
-          <div className="news-intake-runs-table-wrap">
-            <table className="news-intake-runs-table" data-testid="news-intake-runs-table">
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Source</th>
-                  <th>Action</th>
-                  <th>State</th>
-                  <th>Locale</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runsQuery.data!.items.map((run) => (
-                  <tr key={run.id}>
-                    <td>{formatWhen(run.when ?? run.created_at)}</td>
-                    <td>{formatRunSource(run)}</td>
-                    <td>{formatRunAction(run)}</td>
-                    <td>{humanState(run.state)}</td>
-                    <td>{run.locale ?? "—"}</td>
+        {(runsPage?.items.length ?? 0) > 0 && (
+          <>
+            <div className="news-intake-runs-table-wrap">
+              <table className="news-intake-runs-table" data-testid="news-intake-runs-table">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Source</th>
+                    <th>Action</th>
+                    <th>State</th>
+                    <th>Locale</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {runsPage!.items.map((run) => (
+                    <tr key={run.id}>
+                      <td>{formatWhen(run.when ?? run.created_at)}</td>
+                      <td>{formatRunSource(run)}</td>
+                      <td>{formatRunAction(run)}</td>
+                      <td>{humanState(run.state)}</td>
+                      <td>{run.locale ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="news-intake-runs-pager" data-testid="news-intake-runs-pager">
+              <button
+                type="button"
+                className="news-intake-pager-btn"
+                data-testid="news-intake-runs-prev"
+                disabled={runsOffset <= 0 || runsQuery.isFetching}
+                onClick={() => setRunsOffset((current) => Math.max(0, current - RUNS_PAGE_SIZE))}
+              >
+                Previous
+              </button>
+              <span className="news-intake-pager-meta" data-testid="news-intake-runs-page-label">
+                Page {runsPageNumber}
+              </span>
+              <button
+                type="button"
+                className="news-intake-pager-btn"
+                data-testid="news-intake-runs-next"
+                disabled={!runsHasMore || runsQuery.isFetching}
+                onClick={() => {
+                  const next = runsPage?.next_offset;
+                  if (typeof next === "number") setRunsOffset(next);
+                  else setRunsOffset((current) => current + RUNS_PAGE_SIZE);
+                }}
+              >
+                Next
+              </button>
+            </div>
+          </>
         )}
       </section>
 

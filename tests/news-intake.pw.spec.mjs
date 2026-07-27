@@ -53,11 +53,18 @@ const RUNS_PAGE = {
       updated_at: "2026-07-27T01:01:00Z",
     },
   ],
-  limit: 20,
+  limit: 15,
   offset: 0,
   has_more: false,
   next_offset: null,
   next_cursor: null,
+};
+
+const RUNS_PAGE_MORE = {
+  ...RUNS_PAGE,
+  has_more: true,
+  next_offset: 15,
+  next_cursor: "cursor-page-2",
 };
 
 async function seedSession(page, permissions, role = "tenant_owner") {
@@ -176,10 +183,32 @@ test.describe("News intake settings (mock)", () => {
     });
 
     await page.route("**/api/v1/news-intake/runs**", async (route) => {
+      const url = new URL(route.request().url());
+      const offset = Number(url.searchParams.get("offset") || "0");
+      const limit = Number(url.searchParams.get("limit") || "15");
+      expect(limit).toBe(15);
+      const pageData =
+        offset === 0
+          ? RUNS_PAGE_MORE
+          : {
+              ...RUNS_PAGE,
+              items: [
+                {
+                  ...RUNS_PAGE.items[0],
+                  id: "job-2",
+                  when: "2026-07-26T12:00:00Z",
+                  state: "queued",
+                },
+              ],
+              offset: 15,
+              has_more: false,
+              next_offset: null,
+              next_cursor: null,
+            };
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ success: true, data: RUNS_PAGE, meta: { request_id: "ni" } }),
+        body: JSON.stringify({ success: true, data: pageData, meta: { request_id: "ni" } }),
       });
     });
 
@@ -192,6 +221,7 @@ test.describe("News intake settings (mock)", () => {
     await expect(page.getByTestId("news-intake-automatic-status")).toContainText(/Off/i);
     await expect(page.getByTestId("news-intake-automatic-status")).toContainText(/every 5 minutes/i);
     await expect(page.getByText(/pipeline|scheduler|ingest|enqueue/i)).toHaveCount(0);
+    await expect(page.getByText(/Company scope/i)).toHaveCount(0);
 
     await page.getByTestId("news-intake-automatic-switch").click();
     await expect(page.getByTestId("news-intake-notice")).toContainText(/Automatic intake is on/i);
@@ -207,6 +237,15 @@ test.describe("News intake settings (mock)", () => {
     await expect(page.getByTestId("news-intake-runs-table")).toBeVisible();
     await expect(page.getByText("EGI Media pull")).toBeVisible();
     await expect(page.getByText("succeeded")).toBeVisible();
+    await expect(page.getByTestId("news-intake-runs-page-label")).toHaveText("Page 1");
+    await expect(page.getByTestId("news-intake-runs-prev")).toBeDisabled();
+    await expect(page.getByTestId("news-intake-runs-next")).toBeEnabled();
+    await page.getByTestId("news-intake-runs-next").click();
+    await expect(page.getByTestId("news-intake-runs-page-label")).toHaveText("Page 2");
+    await expect(page.getByText("queued")).toBeVisible();
+    await expect(page.getByTestId("news-intake-runs-next")).toBeDisabled();
+    await page.getByTestId("news-intake-runs-prev").click();
+    await expect(page.getByTestId("news-intake-runs-page-label")).toHaveText("Page 1");
   });
 
   test("company_admin: manage switch disabled; trigger enabled", async ({ page }) => {

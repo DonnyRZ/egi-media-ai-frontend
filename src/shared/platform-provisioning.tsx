@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { PermissionGate } from "@/shared/permission-guard";
+import { displayCompanyName } from "@/shared/company-options";
 import { SoftNavLink } from "@/shared/soft-nav";
 
 type Tenant = { tenant_id: string; name: string; status: string };
@@ -156,7 +157,7 @@ export function PlatformProvisioning() {
       setOwnerNextSteps({
         email,
         companyId: ownerCompanyId,
-        companyName: companyRow?.name || ownerCompanyId,
+        companyName: displayCompanyName(companyRow || { company_id: ownerCompanyId, name: null }),
         tenantName: selected?.name || "this tenant",
       });
       setOwnerEmail("");
@@ -255,7 +256,7 @@ export function PlatformProvisioning() {
               {companies.data?.map((item) => (
                 <div className="access-row" key={item.company_id}>
                   <div>
-                    <strong>{item.name || item.company_id}</strong>
+                    <strong>{displayCompanyName(item)}</strong>
                     <span>
                       {item.company_id} · {item.status || "active"}
                     </span>
@@ -297,7 +298,7 @@ export function PlatformProvisioning() {
                   <option value="">Select company (required)</option>
                   {companies.data?.map((item) => (
                     <option key={item.company_id} value={item.company_id}>
-                      {item.name || item.company_id}
+                      {displayCompanyName(item)}
                     </option>
                   ))}
                 </select>

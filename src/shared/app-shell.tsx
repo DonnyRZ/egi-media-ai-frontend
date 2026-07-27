@@ -19,7 +19,7 @@ import { PermissionGate } from "@/shared/permission-guard";
 import { OptimisticNavView, hasOptimisticNavView, prefetchOptimisticNavViews, toLocalePath } from "@/shared/optimistic-nav-view";
 import { SoftNavLink, SoftNavProvider } from "@/shared/soft-nav";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
-import { mergeCompanyOptions } from "@/shared/company-options";
+import { mergeCompanyOptions, activeCompanyLabel, displayCompanyName, displayCompanyInitial, resolveActiveCompany } from "@/shared/company-options";
 
 function isNavActive(href: string, path: string) {
   return href === "/" ? path === "/" : path.startsWith(href);
@@ -125,8 +125,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
   const companiesLoading = companiesQuery.isPending || companiesQuery.isLoading;
   const companiesEmpty = !companiesLoading && companies.length === 0;
-  const currentCompany = activeCompanyId ?? "workspace";
-  const switcherLabel = hasCompany ? currentCompany : "No company selected";
+  const activeCompany = resolveActiveCompany(companies, activeCompanyId);
+  const switcherLabel = hasCompany ? activeCompanyLabel(companies, activeCompanyId) : "No company selected";
+  const switcherInitial = hasCompany ? displayCompanyInitial(activeCompany) : "—";
   const profileName = actor?.fullName || actor?.email || "Workspace user";
   const profileRole = actor?.role ? actor.role.replaceAll("_", " ") : "Workspace member";
   const profileInitial = profileName.trim().slice(0, 1).toUpperCase() || "U";
@@ -167,7 +168,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
     try {
       const response = await axiosClient.post<{
-        data: { access_token: string; tenant_id?: string; company_id?: string; role?: string; permissions?: string[] };
+        data: { access_token: string; tenant_id?: string; company_id?: string; role?: string; permissions?: string[]; company_name?: string | null };
       }>(API_ENDPOINTS.authSwitchContext, { tenant_id: company.tenant_id, company_id: company.company_id });
       const data = response.data.data;
       const currentActor = useSessionStore.getState().actor;
@@ -183,7 +184,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         tenantId: data.tenant_id || company.tenant_id,
         activeCompanyId: data.company_id || company.company_id,
         authorizedCompanies: mergeCompanyOptions(authorizedCompanies, [
-          { company_id: company.company_id, name: company.name ?? null, tenant_id: company.tenant_id },
+          {
+            company_id: company.company_id,
+            name: data.company_name ?? company.name ?? null,
+            tenant_id: company.tenant_id,
+          },
         ]),
       });
       setCompanyOpen(false);
@@ -303,7 +308,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <h1 className="page-title">{pageTitleFor(activePath)}</h1>
           <div className="company-switcher-wrap">
             <button className="company-switcher" onClick={() => setCompanyOpen(!companyOpen)} aria-expanded={companyOpen} data-testid="company-switcher" data-has-company={hasCompany ? "true" : "false"}>
-              <span className="company-avatar">{hasCompany ? currentCompany.slice(0, 1).toUpperCase() : "—"}</span>
+              <span className="company-avatar">{switcherInitial}</span>
               <span><small>Company scope</small><strong>{switcherLabel}</strong></span><Icon name="chevron" size={15} />
             </button>
             {companyOpen && (
@@ -350,9 +355,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                       data-company-id={company.company_id}
                       data-tenant-id={company.tenant_id || ""}
                     >
-                      <span className="company-avatar small">{(company.name || company.company_id).slice(0, 1).toUpperCase()}</span>
+                      <span className="company-avatar small">{displayCompanyInitial(company)}</span>
                       <span>
-                        <strong>{company.name || company.company_id}</strong>
+                        <strong>{displayCompanyName(company)}</strong>
                         <small>{company.tenant_id ? "Authorized scope" : "Scope incomplete"}</small>
                       </span>
                     </button>

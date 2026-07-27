@@ -146,6 +146,11 @@ test.describe("Sprint 4 post-provision owner chain", () => {
     expect(
       authorized.some((item) => item.company_id === scope.companyId && item.tenant_id === scope.tenantId),
     ).toBeTruthy();
+    const authorizedTarget = authorized.find((item) => item.company_id === scope.companyId);
+    expect(authorizedTarget?.name).toBeTruthy();
+    expect(String(authorizedTarget.name)).not.toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
     expect(ownerLogin.json.data.company_id).toBe(scope.companyId);
     expect(ownerLogin.json.data.tenant_id).toBe(scope.tenantId);
 
@@ -156,6 +161,10 @@ test.describe("Sprint 4 post-provision owner chain", () => {
     const listedTarget = (companiesList.json?.data?.items || []).find((item) => item.company_id === scope.companyId);
     expect(listedTarget, "company list should include provisioned company").toBeTruthy();
     expect(listedTarget.tenant_id).toBe(scope.tenantId);
+    expect(listedTarget.name).toBeTruthy();
+    expect(String(listedTarget.name)).not.toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
 
     // Owner UI: company in switcher with tenant_id; hasCompany true (login auto-scope or select).
     await page.goto("/id/login");
@@ -191,5 +200,7 @@ test.describe("Sprint 4 post-provision owner chain", () => {
     }
 
     await expect(page.getByTestId("company-switcher")).toHaveAttribute("data-has-company", "true");
+    await expect(page.getByTestId("company-switcher")).toContainText(String(authorizedTarget.name));
+    await expect(page.getByTestId("company-switcher")).not.toContainText(scope.companyId);
   });
 });

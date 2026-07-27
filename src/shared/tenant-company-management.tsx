@@ -7,6 +7,7 @@ import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { PermissionGate } from "@/shared/permission-guard";
 import { PrerequisiteGate } from "@/shared/prerequisite-gate";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
+import { displayCompanyName } from "@/shared/company-options";
 
 const idempotency = () => crypto.randomUUID();
 
@@ -82,7 +83,7 @@ export function TenantCompanyManagement() {
           {companies.data?.map((item) => (
             <div className="access-row" key={item.company_id}>
               <div>
-                <strong>{item.name || item.company_id}</strong>
+                <strong>{displayCompanyName(item)}</strong>
                 <span>
                   {item.company_id} · {item.status || "active"}
                 </span>

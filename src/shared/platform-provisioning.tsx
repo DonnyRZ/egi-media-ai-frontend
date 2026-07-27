@@ -193,7 +193,7 @@ export function PlatformProvisioning() {
 
         <section className="access-invite-card">
           <strong>Create tenant</strong>
-          <div className="access-form">
+          <div className="access-form access-form-compact">
             <input aria-label="Tenant name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Customer legal/workspace name" />
             <button className="context-action" disabled={!name.trim() || createTenant.isPending} onClick={() => createTenant.mutate()}>
               Create tenant
@@ -266,7 +266,7 @@ export function PlatformProvisioning() {
 
             <section className="access-invite-card">
               <strong>Create company for {selected.name}</strong>
-              <div className="access-form">
+              <div className="access-form access-form-compact">
                 <input aria-label="Company name" value={company} onChange={(event) => setCompany(event.target.value)} placeholder="Company name" />
                 <button className="context-action" disabled={!company.trim() || createCompany.isPending} onClick={() => createCompany.mutate()}>
                   Create company

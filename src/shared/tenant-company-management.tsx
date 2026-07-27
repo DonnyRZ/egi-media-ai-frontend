@@ -63,7 +63,7 @@ export function TenantCompanyManagement() {
         </div>
         <section className="access-invite-card">
           <strong>Create company</strong>
-          <div className="access-form">
+          <div className="access-form access-form-compact">
             <input aria-label="Company name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Company name" />
             <button className="context-action" disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>
               Create company

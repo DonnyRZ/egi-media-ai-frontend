@@ -58,7 +58,7 @@ function ReportsWorkspaceBody() {
         </div>
       ) : (
         <div className="reports-workspace">
-          <div className="issues-toolbar">
+          <div className="issues-toolbar reports-toolbar">
             <select value={reportType} onChange={(event) => setReportType(event.target.value as ReportTypeFilter)} aria-label="Filter reports by period">
               <option value="all">All report periods</option>
               <option value="harian">Daily</option>

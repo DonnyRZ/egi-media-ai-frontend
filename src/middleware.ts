@@ -11,18 +11,24 @@ function publicOrigin(request: NextRequest): URL {
     const base = new URL(site);
     const url = request.nextUrl.clone();
     url.protocol = base.protocol;
+    // Assigning host does not clear a pre-existing port, so set port explicitly
+    // or redirects keep the internal port (e.g. :3011) in the public URL.
     url.host = base.host;
+    url.port = base.port;
     return url;
   }
 
   const proto = request.headers.get("x-forwarded-proto") || request.nextUrl.protocol.replace(":", "");
-  const host =
+  const forwarded = (
     request.headers.get("x-forwarded-host") ||
     request.headers.get("host") ||
-    request.nextUrl.host;
+    request.nextUrl.host
+  ).split(",")[0].trim();
+  const [hostname, port = ""] = forwarded.split(":");
   const url = request.nextUrl.clone();
   url.protocol = `${proto}:`;
-  url.host = host.split(",")[0].trim();
+  url.host = hostname;
+  url.port = port;
   return url;
 }
 

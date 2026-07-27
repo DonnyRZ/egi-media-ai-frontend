@@ -49,9 +49,9 @@ const SCOPED_ROUTES = [
   },
   {
     url: "/id/issues",
-    softLabel: /All Issues/i,
-    heading: /Company scope required for issues/i,
-    forbid: [/No issues yet/i],
+    softLabel: /News Feed/i,
+    heading: /Company scope required for News Feed/i,
+    forbid: [/No stories yet/i, /No issues yet/i],
   },
   {
     url: "/id/alerts",

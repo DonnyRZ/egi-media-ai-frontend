@@ -1,5 +1,5 @@
-import { IssuesList } from "@/shared/issues-list";
+import { NewsFeed } from "@/shared/news-feed";
 
 export default function IssuesPage() {
-  return <IssuesList />;
+  return <NewsFeed />;
 }

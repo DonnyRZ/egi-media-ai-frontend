@@ -19,26 +19,26 @@ test.describe("supported primary flows", () => {
   test("dashboard → issue detail drawer", async ({ page }) => {
     await mockDashboard(page);
     await login(page);
-    await page.goto("/id/issues");
+    await page.goto("/id");
     await page.getByRole("button", { name: /Company scope/ }).click();
     await page.getByRole("button", { name: /Company A/ }).click();
     await expect(page.getByRole("button", { name: /company-a/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Issue outside top five/i })).toBeVisible();
-    await page.getByRole("button", { name: /Issue outside top five/i }).click();
+    await expect(page.getByRole("button", { name: /Top issue/i })).toBeVisible();
+    await page.getByRole("button", { name: /Top issue/i }).click();
     await expect(page.getByRole("dialog", { name: "Issue detail" })).toBeVisible();
     await expect(page.getByText("Validated current analysis")).not.toBeVisible();
   });
 
-  test("searches an issue outside Top 5", async ({ page }) => {
-    await page.route("**/api/v1/issues**", async (route) => {
-      const q = new URL(route.request().url()).searchParams.get("q");
-      const items = q ? [issue("issue-12", "Issue outside top five")] : [issue("issue-1", "Top issue")];
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items, meta: { page: 1, limit: 10, total: items.length } }, meta: { request_id: "e2e" } }) });
-    });
+  test("news feed default channel and search", async ({ page }) => {
+    await mockDashboard(page);
     await login(page);
     await page.goto("/id/issues");
-    await page.getByLabel("Search issues").fill("outside top five");
-    await expect(page.getByRole("heading", { name: "Issue outside top five" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "News Feed" })).toBeVisible();
+    const egiTab = page.locator('[data-testid="news-feed-tabs"] button[data-channel="egi_media"]');
+    await expect(egiTab).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("heading", { name: "EGI Media headline" })).toBeVisible();
+    await page.getByLabel("Search news feed").fill("headline");
+    await expect(page.getByRole("heading", { name: "EGI Media headline" })).toBeVisible();
   });
 
   test("Company Context draft → edit → Save → effective refresh", async ({ page }) => {
@@ -117,10 +117,10 @@ test.describe("supported primary flows", () => {
 
   test("save and unsave issue", async ({ page }) => {
     let saved = false;
-    await page.route("**/api/v1/saved/issues**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: saved ? [{ saved_id: "saved-1", issue_id: "issue-12", saved_at: "2026-01-02T00:00:00Z", issue: issue("issue-12", "Issue outside top five") }] : [], meta: { page: 1, limit: 100, total: saved ? 1 : 0 } }, meta: { request_id: "e2e" } }) }));
-    await page.route("**/api/v1/issues/issue-12/saved", async (route) => { saved = route.request().method() === "POST"; await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { issue_id: "issue-12", saved_at: "2026-01-02T00:00:00Z" }, meta: { request_id: "e2e" } }) }); });
-    await mockDashboard(page); await login(page); await page.goto("/id/issues");
-    await page.getByRole("button", { name: /Issue outside top five/i }).click();
+    await page.route("**/api/v1/saved/issues**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: saved ? [{ saved_id: "saved-1", issue_id: "issue-1", saved_at: "2026-01-02T00:00:00Z", issue: issue("issue-1", "Top issue") }] : [], meta: { page: 1, limit: 100, total: saved ? 1 : 0 } }, meta: { request_id: "e2e" } }) }));
+    await page.route("**/api/v1/issues/issue-1/saved", async (route) => { saved = route.request().method() === "POST"; await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { issue_id: "issue-1", saved_at: "2026-01-02T00:00:00Z" }, meta: { request_id: "e2e" } }) }); });
+    await mockDashboard(page); await login(page); await page.goto("/id");
+    await page.getByRole("button", { name: /Top issue/i }).click();
     await expect(page.getByRole("button", { name: "Save issue" })).toBeVisible();
     await page.getByRole("button", { name: "Save issue" }).click();
     await expect(page.getByRole("button", { name: "Unsave issue" })).toBeVisible();
@@ -155,8 +155,75 @@ async function login(page) {
 }
 
 async function mockDashboard(page) {
+  const summaryItem = {
+    issueId: "issue-1",
+    title: "Top issue",
+    oneLiner: "Validated one-liner for Top issue",
+    status: "berkembang",
+    priority: "tinggi",
+    lastDevelopedAt: "2026-01-02T00:00:00Z",
+  };
   await page.route("**/api/v1/companies**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [{ company_id: "company-a", name: "Company A" }, { company_id: "company-b", name: "Company B" }] }, meta: { request_id: "e2e" } }) }));
-  await page.route("**/api/v1/dashboard/executive-summary**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { period: "24jam", startAt: "2026-01-01T00:00:00Z", endAt: "2026-01-02T00:00:00Z", items: [issue("issue-1", "Top issue")], issues: [issue("issue-1", "Top issue")], top5_limit: 5 }, meta: { request_id: "e2e" } }) }));
-  await page.route("**/api/v1/issues**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [issue("issue-12", "Issue outside top five")], meta: { page: 1, limit: 10, total: 1 } }, meta: { request_id: "e2e" } }) }));
+  await page.route("**/api/v1/dashboard/executive-summary**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { period: "24jam", startAt: "2026-01-01T00:00:00Z", endAt: "2026-01-02T00:00:00Z", items: [summaryItem], issues: [summaryItem], top5_limit: 5 }, meta: { request_id: "e2e" } }) }));
+  await page.route("**/api/v1/issues/issue-1", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { ...issue("issue-1", "Top issue"), articles: [], developments: [], analysis: null, priority: null }, meta: { request_id: "e2e" } }) }));
   await page.route("**/api/v1/issues/issue-12", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { ...issue("issue-12", "Issue outside top five"), articles: [], developments: [], analysis: null, priority: null }, meta: { request_id: "e2e" } }) }));
+  await page.route("**/api/v1/issues**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [issue("issue-12", "Issue outside top five")], meta: { page: 1, limit: 10, total: 1 } }, meta: { request_id: "e2e" } }) }));
+  await mockNewsFeed(page);
+}
+
+async function mockNewsFeed(page) {
+  await page.route("**/api/v1/news-feed**", async (route) => {
+    const channel = new URL(route.request().url()).searchParams.get("channel") || "egi_media";
+    if (channel === "viral") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            channel: "viral",
+            label: "Viral",
+            layout: "text",
+            provider: "viral_x",
+            items: [],
+            next_cursor: null,
+            availability: "coming_soon",
+            message: "Coming soon",
+          },
+          meta: { request_id: "e2e" },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: {
+          channel,
+          label: channel === "egi_media" ? "EGI Media" : channel,
+          layout: "card",
+          provider: channel === "egi_media" ? "cms" : "crawl",
+          items: [
+            {
+              id: "cms:article-1",
+              channel,
+              provider: channel === "egi_media" ? "cms" : "crawl",
+              layout: "card",
+              title: "EGI Media headline",
+              summary: "A validated feed summary for the news feed card layout.",
+              published_at: "2026-01-02T00:00:00Z",
+              source_url: "https://example.com/story",
+              thumbnail_url: "https://example.com/thumb.jpg",
+              crawl_source_id: null,
+              issue_source_id: "cms:article-1",
+            },
+          ],
+          next_cursor: null,
+        },
+        meta: { request_id: "e2e" },
+      }),
+    });
+  });
 }

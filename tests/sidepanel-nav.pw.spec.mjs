@@ -4,7 +4,7 @@ const EMAIL = process.env.BOOTSTRAP_ADMIN_EMAIL || "egi.egiholding@gmail.com";
 const PASSWORD = process.env.BOOTSTRAP_ADMIN_PASSWORD || "EgiMedia123!";
 
 const ROUTES = [
-  { label: "All Issues", path: /\/id\/issues/, heading: /All Issues|Issues/i },
+  { label: "News Feed", path: /\/id\/issues/, heading: /News Feed/i },
   { label: "Alerts", path: /\/id\/alerts/, heading: /Alerts|Inbox|Notification/i },
   { label: "Reports", path: /\/id\/reports/, heading: /Reports|Report/i },
   { label: "Settings", path: /\/id\/settings(?!\/)/, heading: /Settings|Workspace/i },

@@ -22,8 +22,8 @@ test.describe("visual regression surfaces", () => {
 
   test("issue detail drawer", async ({ page }) => {
     await page.route("**/api/v1/issues/issue-visual", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { issue_id: "issue-visual", title: "Visual issue detail", one_liner: "A validated issue detail for visual review", status: "berkembang", priority: "tinggi", version: 1, articles: [], developments: [], analysis: null, priority_analysis: null }, meta: { request_id: "visual" } }) }));
-    await page.route("**/api/v1/issues**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [{ issue_id: "issue-visual", title: "Visual issue detail", one_liner: "A validated issue detail for visual review", status: "berkembang", priority: "tinggi", version: 1, first_seen_at: "2026-01-01T00:00:00Z", last_developed_at: "2026-01-02T00:00:00Z" }], meta: { page: 1, limit: 10, total: 1 } }, meta: { request_id: "visual" } }) }));
-    await page.goto("/id/issues");
+    await page.route("**/api/v1/dashboard/executive-summary**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { period: "24jam", startAt: "2026-01-01T00:00:00Z", endAt: "2026-01-02T00:00:00Z", items: [{ issue_id: "issue-visual", title: "Visual issue detail", one_liner: "A validated issue detail for visual review", status: "berkembang", priority: "tinggi", lastDevelopedAt: "2026-01-02T00:00:00Z" }], issues: [], top5_limit: 5 }, meta: { request_id: "visual" } }) }));
+    await page.goto("/id");
     await page.getByRole("button", { name: /Visual issue detail/i }).click();
     await expect(page.getByRole("dialog", { name: "Issue detail" })).toBeVisible();
     await expect(page).toHaveScreenshot("issue-drawer-desktop.png", { fullPage: true });

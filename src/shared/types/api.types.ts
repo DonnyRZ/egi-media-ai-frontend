@@ -51,6 +51,34 @@ export interface IssueListDto {
   meta: PaginationMeta;
 }
 
+export type NewsFeedLayoutDto = "card" | "text";
+export type NewsFeedProviderDto = "viral_x" | "cms" | "crawl" | string;
+
+export interface NewsFeedItemDto {
+  id: string;
+  channel: string;
+  provider: NewsFeedProviderDto;
+  layout: NewsFeedLayoutDto;
+  title: string | null;
+  summary: string | null;
+  published_at: string | null;
+  source_url: string | null;
+  thumbnail_url: string | null;
+  crawl_source_id: string | null;
+  issue_source_id: string | null;
+}
+
+export interface NewsFeedPageDto {
+  channel: string;
+  label: string;
+  layout: NewsFeedLayoutDto;
+  provider: NewsFeedProviderDto;
+  items: NewsFeedItemDto[];
+  next_cursor: string | null;
+  availability?: "coming_soon" | string;
+  message?: string | null;
+}
+
 export interface CompanyContextDto {
   context_id: string;
   company_id: string;
@@ -77,6 +105,72 @@ export interface AlertPreferenceDto {
 
 export interface LanguagePreferenceDto {
   language: CompanyLanguage;
+}
+
+export interface NewsIntakeAutomaticDto {
+  desired: boolean;
+  actual_running: boolean;
+  enabled: boolean;
+  running: boolean;
+  interval_ms: number | null;
+  batch_size: number | null;
+  locales: string[];
+  last_enqueue_at: string | null;
+  last_enqueue_status: string | null;
+  last_error_code: string | null;
+  last_job_id: string | null;
+  desired_source: string | null;
+  desired_updated_at: string | null;
+}
+
+export interface NewsIntakeStatusDto {
+  automatic_intake: NewsIntakeAutomaticDto;
+  workers: { enabled: boolean; running: boolean };
+  pipeline: { configured: boolean };
+}
+
+export type NewsIntakePullMode = "poll" | "crawl-poll" | "article";
+
+export interface NewsIntakePullRequest {
+  mode: NewsIntakePullMode;
+  locale: "id" | "en" | "uz";
+  limit: number;
+  crawl_source_id?: string;
+  article_id?: string;
+}
+
+export interface NewsIntakePullResultDto {
+  id: string;
+  action: string;
+  state: string;
+  reused: boolean;
+  locale: string;
+  stages: Array<{ name: string; state: string; updated_at: string }>;
+}
+
+export interface NewsIntakeRunDto {
+  id: string;
+  when: string | null;
+  source: string | null;
+  mode: string | null;
+  action: string | null;
+  state: string;
+  locale: string | null;
+  crawl_source_id: string | null;
+  job_type: string | null;
+  family: "intake" | "ai_task" | string;
+  reused: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface NewsIntakeRunsPageDto {
+  items: NewsIntakeRunDto[];
+  limit: number;
+  offset: number;
+  has_more: boolean;
+  next_offset: number | null;
+  next_cursor: string | null;
 }
 
 export interface SavedIssueDto { saved_id: string; issue_id: string; saved_at: string; issue: IssueCardDto; }

@@ -46,6 +46,12 @@ const CARDS: HubCard[] = [
     requireCompany: true,
   },
   {
+    href: "/settings/news-intake",
+    title: "News intake",
+    description: "Automatic and manual article intake for issues.",
+    requireCompany: true,
+  },
+  {
     href: "/settings/display-language",
     title: "Display language",
     description: "Choose Bahasa Indonesia or English for newly generated AI output.",
@@ -71,6 +77,12 @@ function blockReasonFor(card: HubCard, missing: ScopePrerequisite): BlockReason 
     return {
       title,
       reason: "Alert preferences are stored per company, and your session has no active company selected.",
+    };
+  }
+  if (card.href.includes("news-intake")) {
+    return {
+      title,
+      reason: "News intake is scoped to an active company, and your session has no active company selected.",
     };
   }
   if (card.href.includes("display-language")) {

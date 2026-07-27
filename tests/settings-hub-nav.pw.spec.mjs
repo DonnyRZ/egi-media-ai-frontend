@@ -8,6 +8,7 @@ const BLOCKED_CARDS = [
   { testId: "settings-hub-card-company-context", blockedBy: "company", title: /Cannot open Company Context/i, reason: /active company/i },
   { testId: "settings-hub-card-context-draft-flow", blockedBy: "company", title: /Cannot open Context draft flow/i, reason: /draft/i },
   { testId: "settings-hub-card-alert-preferences", blockedBy: "company", title: /Cannot open Alert preferences/i, reason: /Alert preferences/i },
+  { testId: "settings-hub-card-news-intake", blockedBy: "company", title: /Cannot open News intake/i, reason: /News intake/i },
 ];
 
 /** Pins provisioning state so the contextual next step is deterministic. */
@@ -125,6 +126,7 @@ test.describe("Settings hub Open cards (soft-nav)", () => {
       { url: "/id/settings/company-context", heading: /Company required for company context|Company Context|No effective context/i },
       { url: "/id/settings/company-context/draft", heading: /Company required for context draft|Build Company Context/i },
       { url: "/id/settings/alert-preferences", heading: /Company required for alert preferences|Alert preferences/i },
+      { url: "/id/settings/news-intake", heading: /Company required for News intake|News intake/i },
       { url: "/id/settings/access", heading: /Access control|Tenant required for access|Access restricted/i },
     ];
 

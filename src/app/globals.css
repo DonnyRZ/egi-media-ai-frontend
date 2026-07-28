@@ -628,6 +628,8 @@
 .analysis-block { display: grid; gap: 7px; margin-top: 16px; }
 .analysis-block:first-of-type { margin-top: 0; }
 .analysis-block p, .claim-item p { color: var(--color-text); font-size: 14px; line-height: 1.65; }
+.analysis-points { margin: 0; padding-left: 1.15rem; display: grid; gap: 6px; color: var(--color-text); font-size: 14px; line-height: 1.55; }
+.analysis-points li { padding-left: 2px; }
 .drawer-priority { color: var(--color-muted); font-size: 13px; }
 .claim-list { display: grid; gap: 12px; }
 .claim-item { border-left: 2px solid var(--color-primary-border); padding-left: 12px; }

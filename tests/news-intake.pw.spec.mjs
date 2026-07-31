@@ -33,6 +33,24 @@ const STATUS_OFF = {
   },
   workers: { enabled: true, running: true },
   pipeline: { configured: true },
+  intake_ready: true,
+  management_identity: {
+    ready: true,
+    status: "ready",
+    context_version: 1,
+    has_effective_context: true,
+  },
+};
+
+const STATUS_IDENTITY_BLOCKED = {
+  ...STATUS_OFF,
+  intake_ready: false,
+  management_identity: {
+    ready: false,
+    status: "missing",
+    context_version: 1,
+    has_effective_context: true,
+  },
 };
 
 const RUNS_PAGE = {
@@ -220,8 +238,8 @@ test.describe("News intake settings (mock)", () => {
     await expect(page.getByRole("heading", { name: "Recent runs" })).toBeVisible();
     await expect(page.getByTestId("news-intake-automatic-status")).toContainText(/Off/i);
     await expect(page.getByTestId("news-intake-automatic-status")).toContainText(/every 5 minutes/i);
-    await expect(page.getByText(/pipeline|scheduler|ingest|enqueue/i)).toHaveCount(0);
-    await expect(page.getByText(/Company scope/i)).toHaveCount(0);
+    await expect(page.getByTestId("news-intake-page").getByText(/pipeline|scheduler|ingest|enqueue/i)).toHaveCount(0);
+    await expect(page.getByTestId("news-intake-page").getByText(/Company scope/i)).toHaveCount(0);
 
     await page.getByTestId("news-intake-automatic-switch").click();
     await expect(page.getByTestId("news-intake-notice")).toContainText(/Automatic intake is on/i);
@@ -347,5 +365,79 @@ test.describe("News intake settings (mock)", () => {
       limit: 5,
     });
     expect(pullBodies[0].content).toBeUndefined();
+  });
+
+  test("blocks pull and automatic when management identity is not ready", async ({ page }) => {
+    await seedSession(page, OWNER_PERMISSIONS);
+    await mockSessionAndCompanies(page, OWNER_PERMISSIONS);
+
+    await page.route("**/api/v1/news-intake/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: STATUS_IDENTITY_BLOCKED, meta: { request_id: "ni" } }),
+      });
+    });
+    await page.route("**/api/v1/news-intake/runs**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: { ...RUNS_PAGE, items: [] },
+          meta: { request_id: "ni" },
+        }),
+      });
+    });
+
+    await page.goto("/id/settings/news-intake");
+    await expect(page.getByTestId("news-intake-page")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("news-intake-identity-block")).toContainText(/Management identity must be ready/i);
+    await expect(page.getByTestId("news-intake-pull-now")).toBeDisabled();
+    await expect(page.getByTestId("news-intake-automatic-switch")).toBeDisabled();
+    await expect(page.getByTestId("news-intake-pull-blocked-note")).toBeVisible();
+  });
+
+  test("maps MANAGEMENT_IDENTITY_REQUIRED on pull", async ({ page }) => {
+    await seedSession(page, OWNER_PERMISSIONS);
+    await mockSessionAndCompanies(page, OWNER_PERMISSIONS);
+
+    await page.route("**/api/v1/news-intake/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: STATUS_OFF, meta: { request_id: "ni" } }),
+      });
+    });
+    await page.route("**/api/v1/news-intake/runs**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: { ...RUNS_PAGE, items: [] },
+          meta: { request_id: "ni" },
+        }),
+      });
+    });
+    await page.route("**/api/v1/news-intake/pull", async (route) => {
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: false,
+          error: {
+            code: "MANAGEMENT_IDENTITY_REQUIRED",
+            message: "Management identity must be ready before news intake or judgmental AI tasks",
+          },
+          meta: { request_id: "ni" },
+        }),
+      });
+    });
+
+    await page.goto("/id/settings/news-intake");
+    await expect(page.getByTestId("news-intake-page")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("news-intake-pull-now").click();
+    await expect(page.getByTestId("news-intake-notice")).toContainText(/Management identity must be ready/i);
   });
 });

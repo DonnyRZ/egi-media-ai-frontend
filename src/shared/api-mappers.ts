@@ -43,5 +43,16 @@ export function mapCompanyContext(dto: CompanyContextDto) {
     updatedBy: dto.updated_by,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
+    managementIdentity: dto.management_identity
+      ? {
+          status: dto.management_identity.status,
+          contextVersion: dto.management_identity.context_version,
+          companyName: dto.management_identity.company_name,
+          lensSummary: dto.management_identity.lens_summary,
+          fingerprint: dto.management_identity.fingerprint,
+          errorMessage: dto.management_identity.error_message,
+          updatedAt: dto.management_identity.updated_at,
+        }
+      : null,
   };
 }

@@ -1,19 +1,38 @@
 "use client";
 
 import { isAxiosError } from "axios";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { Link } from "@/i18n/navigation";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { mapCompanyContext } from "@/shared/api-mappers";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
+import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
-import type { ApiSuccessResponse, CompanyContextDto } from "@/shared/types/api.types";
+import type { ApiSuccessResponse, CompanyContextDto, ManagementIdentityDto } from "@/shared/types/api.types";
 
 async function fetchCompanyContext(companyId: string) {
   const response = await axiosClient.get<ApiSuccessResponse<CompanyContextDto>>(API_ENDPOINTS.companyContext(companyId));
   return mapCompanyContext(response.data.data);
+}
+
+async function deleteCompanyContext(companyId: string) {
+  const response = await axiosClient.delete<ApiSuccessResponse<{ cleared: boolean; archived_version: number | null; company_id: string }>>(
+    API_ENDPOINTS.companyContext(companyId),
+    { headers: { "Idempotency-Key": `company-context-delete-${crypto.randomUUID()}` } },
+  );
+  return response.data.data;
+}
+
+async function retryManagementIdentity(companyId: string) {
+  const response = await axiosClient.post<ApiSuccessResponse<{ management_identity: ManagementIdentityDto }>>(
+    API_ENDPOINTS.companyContextIdentityRetry(companyId),
+    {},
+    { headers: { "Idempotency-Key": `company-context-identity-retry-${crypto.randomUUID()}` } },
+  );
+  return response.data.data.management_identity;
 }
 
 function getApiError(error: unknown) {
@@ -71,9 +90,41 @@ function CompanyContextBody({
   isLoading: boolean;
   isError: boolean;
   error: unknown;
-  data: Awaited<ReturnType<typeof fetchCompanyContext>> | undefined;
+  data: Awaited<ReturnType<typeof mapCompanyContext>> | undefined;
   onRetry: () => void;
 }) {
+  const queryClient = useQueryClient();
+  const canApprove = useSessionStore((state) => state.permissions.includes("company_context.approve"));
+  const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteCompanyContext(companyId),
+    onSuccess: () => {
+      setConfirmDelete(false);
+      setNotice({ kind: "success", text: "Effective company context removed. News intake is blocked until a new context is approved." });
+      void queryClient.invalidateQueries({ queryKey: ["company-context", companyId] });
+      void queryClient.invalidateQueries({ queryKey: ["news-intake-status", companyId] });
+    },
+    onError: (err) => setNotice({ kind: "error", text: getApiError(err).message }),
+  });
+
+  const retryIdentityMutation = useMutation({
+    mutationFn: () => retryManagementIdentity(companyId),
+    onSuccess: (identity) => {
+      setNotice({
+        kind: identity.status === "ready" ? "success" : "error",
+        text:
+          identity.status === "ready"
+            ? "Management identity is ready. Manual Pull and automatic intake can run."
+            : `Management identity is still ${identity.status}. ${identity.error_message ?? "Retry again or revise the company context."}`,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["company-context", companyId] });
+      void queryClient.invalidateQueries({ queryKey: ["news-intake-status", companyId] });
+    },
+    onError: (err) => setNotice({ kind: "error", text: getApiError(err).message }),
+  });
+
   if (isLoading) return <ContextLoading />;
   if (isError) {
     const apiError = getApiError(error);
@@ -88,13 +139,101 @@ function CompanyContextBody({
   const companyName = readField(context.fields, ["company_name", "companyName", "name"]) ?? "Company name pending";
   const industry = readField(context.fields, ["industry", "sector"]) ?? "Industry pending";
   const updated = formatDate(context.updatedAt);
+  const identityStatus = context.managementIdentity?.status ?? "missing";
+  const identityReady = identityStatus === "ready";
+  const identityFailed = identityStatus === "failed";
+  const busy = deleteMutation.isPending || retryIdentityMutation.isPending;
 
   return (
-    <div className="context-page">
+    <div className="context-page" data-testid="company-context-read">
       <div className="context-page-heading">
         <p>The approved context currently guiding relevance and issue analysis.</p>
         <span className="context-status-badge">{context.status}</span>
       </div>
+
+      <section className="context-identity-banner" data-testid="company-context-identity" data-status={identityStatus}>
+        <div>
+          <span className="context-label">Management identity</span>
+          <h2>
+            <span className={`context-identity-badge is-${identityStatus}`} data-testid="company-context-identity-badge">
+              {identityStatus}
+            </span>
+          </h2>
+          <p>
+            {identityReady
+              ? "Ready for news intake and judgmental AI tasks."
+              : identityFailed
+                ? context.managementIdentity?.errorMessage ||
+                  "Identity draft failed. Retry identity, or revise company context and approve again."
+                : "News intake is blocked until management identity is ready for this context version."}
+          </p>
+          {context.managementIdentity?.lensSummary ? (
+            <p className="context-identity-lens">{context.managementIdentity.lensSummary}</p>
+          ) : null}
+        </div>
+        {canApprove && (
+          <div className="context-lifecycle-actions">
+            {(identityFailed || identityStatus === "missing" || identityStatus === "pending") && (
+              <button
+                type="button"
+                className="context-action"
+                data-testid="company-context-retry-identity"
+                disabled={busy}
+                onClick={() => {
+                  setNotice(null);
+                  retryIdentityMutation.mutate();
+                }}
+              >
+                {retryIdentityMutation.isPending ? "Retrying identity…" : "Retry identity"}
+              </button>
+            )}
+            <Link className="context-action context-action-secondary" href="/settings/company-context/draft" data-testid="company-context-revise">
+              Revise
+            </Link>
+            {!confirmDelete ? (
+              <button
+                type="button"
+                className="context-action context-action-danger"
+                data-testid="company-context-delete"
+                disabled={busy}
+                onClick={() => {
+                  setNotice(null);
+                  setConfirmDelete(true);
+                }}
+              >
+                Hapus context
+              </button>
+            ) : (
+              <div className="context-delete-confirm" data-testid="company-context-delete-confirm">
+                <p>Remove the effective context? Intake stays blocked until you set up a new one.</p>
+                <button
+                  type="button"
+                  className="context-action context-action-danger"
+                  disabled={busy}
+                  onClick={() => deleteMutation.mutate()}
+                >
+                  {deleteMutation.isPending ? "Removing…" : "Confirm delete"}
+                </button>
+                <button
+                  type="button"
+                  className="context-action context-action-secondary"
+                  disabled={busy}
+                  onClick={() => setConfirmDelete(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {notice && (
+        <div className={`preference-notice ${notice.kind}`} role="status" data-testid="company-context-notice">
+          {notice.text}
+        </div>
+      )}
+
       <section className="context-hero-card">
         <div className="context-company-mark">{companyName.slice(0, 1).toUpperCase()}</div>
         <div>

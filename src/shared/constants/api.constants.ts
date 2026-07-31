@@ -21,6 +21,7 @@ export const API_ENDPOINTS = {
   inboxEmails: "/api/v1/inbox/emails",
   inboxEmailRead: (emailId: string) => `/api/v1/inbox/emails/${emailId}/read`,
   companyContext: (companyId: string) => `/api/v1/companies/${companyId}/context`,
+  companyContextIdentityRetry: (companyId: string) => `/api/v1/companies/${companyId}/context/management-identity/retry`,
   companyContextDraft: "/api/v1/company-context/draft",
   companyContextPdfDraft: "/api/v1/company-context/draft/pdf",
   companyContextDraftById: (draftId: string) => `/api/v1/company-context/drafts/${draftId}`,

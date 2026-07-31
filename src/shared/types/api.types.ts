@@ -79,6 +79,16 @@ export interface NewsFeedPageDto {
   message?: string | null;
 }
 
+export interface ManagementIdentityDto {
+  status: "ready" | "failed" | "pending" | "missing" | string;
+  context_version: number | null;
+  company_name: string | null;
+  lens_summary: string | null;
+  fingerprint: string | null;
+  error_message: string | null;
+  updated_at: string | null;
+}
+
 export interface CompanyContextDto {
   context_id: string;
   company_id: string;
@@ -93,6 +103,7 @@ export interface CompanyContextDto {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  management_identity?: ManagementIdentityDto | null;
 }
 
 export interface AlertPreferenceDto {
@@ -127,6 +138,13 @@ export interface NewsIntakeStatusDto {
   automatic_intake: NewsIntakeAutomaticDto;
   workers: { enabled: boolean; running: boolean };
   pipeline: { configured: boolean };
+  intake_ready?: boolean;
+  management_identity?: {
+    ready: boolean;
+    status: string;
+    context_version: number | null;
+    has_effective_context: boolean;
+  };
 }
 
 export type NewsIntakePullMode = "poll" | "crawl-poll" | "article";

@@ -76,12 +76,29 @@ async function editDraft(draft: Draft, fields: Record<string, unknown>, note: st
   return response.data.data;
 }
 async function approveDraft(draft: Draft, note: string) {
-  const response = await axiosClient.post<ApiSuccessResponse<{ draft: Draft; effective_context: CompanyContextDto }>>(
+  const response = await axiosClient.post<
+    ApiSuccessResponse<{
+      draft: Draft;
+      effective_context: CompanyContextDto;
+      management_identity?: CompanyContextDto["management_identity"];
+    }>
+  >(
     API_ENDPOINTS.companyContextDraftApprove(draft.draft_id),
     { approval_note: note || null },
     { headers: { "If-Match": String(draft.revision), "Idempotency-Key": key("approve") } },
   );
   return response.data.data;
+}
+
+async function retryManagementIdentity(companyId: string) {
+  const response = await axiosClient.post<
+    ApiSuccessResponse<{ management_identity: NonNullable<CompanyContextDto["management_identity"]> }>
+  >(
+    API_ENDPOINTS.companyContextIdentityRetry(companyId),
+    {},
+    { headers: { "Idempotency-Key": key("identity-retry") } },
+  );
+  return response.data.data.management_identity;
 }
 /** Owner/admin Save: persist fields then activate. Requires company_context.approve on the approve step. */
 async function saveAndActivate(draft: Draft, fields: Record<string, unknown>, note: string) {
@@ -124,6 +141,7 @@ function CompanyContextDraftFlowBody() {
   const [fields, setFields] = useState<Record<string, unknown>>({});
   const [saveNote, setSaveNote] = useState("");
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const [identityStatus, setIdentityStatus] = useState<string | null>(null);
   const languageQuery = useQuery({
     queryKey: ["language-preference", companyId],
     queryFn: async () => {
@@ -187,14 +205,42 @@ function CompanyContextDraftFlowBody() {
       setDraft(data.draft);
       queryClient.setQueryData(["company-context-draft", data.draft.draft_id], data.draft);
       if (data.effective_context) {
-        setNotice({ kind: "success", text: "Context saved and activated." });
+        const status = data.management_identity?.status ?? data.effective_context.management_identity?.status ?? "missing";
+        setIdentityStatus(status);
+        setNotice({
+          kind: status === "ready" ? "success" : "error",
+          text:
+            status === "ready"
+              ? "Context saved and activated. Management identity is ready for news intake."
+              : `Context saved and activated, but management identity is ${status}. Retry identity before Pull or automatic intake.`,
+        });
         queryClient.invalidateQueries({ queryKey: ["company-context", companyId] });
+        queryClient.invalidateQueries({ queryKey: ["news-intake-status", companyId] });
       } else {
         setNotice({
           kind: "success",
           text: "Draft saved. Activation requires a role with company context approve permission.",
         });
       }
+    },
+    onError: (error) => setNotice({ kind: "error", text: errorMessage(error) }),
+  });
+  const retryIdentityMutation = useMutation({
+    mutationFn: () => {
+      if (!companyId) throw new Error("Company scope is required.");
+      return retryManagementIdentity(companyId);
+    },
+    onSuccess: (identity) => {
+      setIdentityStatus(identity.status);
+      setNotice({
+        kind: identity.status === "ready" ? "success" : "error",
+        text:
+          identity.status === "ready"
+            ? "Management identity is ready. Manual Pull and automatic intake can run."
+            : `Management identity is still ${identity.status}. ${identity.error_message ?? "Try again or revise the company context."}`,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["company-context", companyId] });
+      void queryClient.invalidateQueries({ queryKey: ["news-intake-status", companyId] });
     },
     onError: (error) => setNotice({ kind: "error", text: errorMessage(error) }),
   });
@@ -205,7 +251,11 @@ function CompanyContextDraftFlowBody() {
     return draft;
   };
   const shownDraft = draft ?? draftQuery.data;
-  const isBusy = createMutation.isPending || saveMutation.isPending;
+  const isBusy = createMutation.isPending || saveMutation.isPending || retryIdentityMutation.isPending;
+  const resolvedIdentityStatus =
+    identityStatus ??
+    effectiveQuery.data?.management_identity?.status ??
+    null;
   const canGenerate =
     Boolean(companyId) && !isBusy && (mode === "pdf" ? Boolean(selectedFile) : Boolean(sourceValue.trim()));
   const isEditable = shownDraft && (shownDraft.status === "draft" || shownDraft.status === "in_review");
@@ -381,9 +431,31 @@ function CompanyContextDraftFlowBody() {
               </>
             )}
             {shownDraft.status === "approved" && (
-              <div className="context-approved-state">
+              <div className="context-approved-state" data-testid="context-approved-state">
                 <strong>Active</strong>
                 <span>The effective context has been refreshed from the backend.</span>
+                {resolvedIdentityStatus && (
+                  <p data-testid="context-draft-identity-status">
+                    Management identity: <strong>{resolvedIdentityStatus}</strong>
+                    {resolvedIdentityStatus !== "ready"
+                      ? " — news intake stays blocked until identity is ready."
+                      : " — ready for news intake."}
+                  </p>
+                )}
+                {canApprove && resolvedIdentityStatus && resolvedIdentityStatus !== "ready" && (
+                  <button
+                    type="button"
+                    className="context-action"
+                    data-testid="context-draft-retry-identity"
+                    disabled={isBusy}
+                    onClick={() => {
+                      setNotice(null);
+                      retryIdentityMutation.mutate();
+                    }}
+                  >
+                    {retryIdentityMutation.isPending ? "Retrying identity…" : "Retry identity"}
+                  </button>
+                )}
               </div>
             )}
           </section>

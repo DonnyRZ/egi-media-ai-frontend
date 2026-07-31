@@ -1,6 +1,32 @@
 import { test, expect } from "@playwright/test";
 
-const contextPayload = { context_id: "ctx-1", company_id: "company-a", version: 2, status: "effective", source: "ai_draft", draft_id: "draft-1", fields: { company_name: "Company A", industry: "Technology", description: "Validated company context", competitors: ["Company B"] }, change_reason: null, updated_by: "dummy-actor", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-02T00:00:00Z" };
+const contextPayload = {
+  context_id: "ctx-1",
+  company_id: "company-a",
+  version: 2,
+  status: "effective",
+  source: "ai_draft",
+  draft_id: "draft-1",
+  fields: {
+    company_name: "Company A",
+    industry: "Technology",
+    description: "Validated company context",
+    competitors: ["Company B"],
+  },
+  change_reason: null,
+  updated_by: "dummy-actor",
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-02T00:00:00Z",
+  management_identity: {
+    status: "ready",
+    context_version: 2,
+    company_name: "Company A",
+    lens_summary: "Leadership lens for Company A",
+    fingerprint: "fp-1",
+    error_message: null,
+    updated_at: "2026-01-02T00:00:00Z",
+  },
+};
 const issue = (id, title) => ({ issue_id: id, title, one_liner: `Validated one-liner for ${title}`, status: "berkembang", priority: "tinggi", first_seen_at: "2026-01-01T00:00:00Z", last_developed_at: "2026-01-02T00:00:00Z", version: 1 });
 
 test.describe("supported primary flows", () => {
@@ -91,7 +117,19 @@ test.describe("supported primary flows", () => {
     });
     await page.route("**/api/v1/company-context/drafts/draft-1/approve", async (route) => {
       draft = { ...draft, status: "approved", revision: draft.revision + 1 };
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { draft, effective_context: contextPayload }, meta: { request_id: "e2e" } }) });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            draft,
+            effective_context: contextPayload,
+            management_identity: contextPayload.management_identity,
+          },
+          meta: { request_id: "e2e" },
+        }),
+      });
     });
     await page.route("**/api/v1/companies/company-a/context", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: contextPayload, meta: { request_id: "e2e" } }) }));
     await page.goto("/id/settings/company-context/draft");
@@ -103,7 +141,8 @@ test.describe("supported primary flows", () => {
     await expect(page.getByRole("button", { name: "Submit for review" })).toHaveCount(0);
     await page.getByLabel("Industry").fill("Finance");
     await page.getByTestId("context-draft-save").click();
-    await expect(page.getByText("Context saved and activated.")).toBeVisible();
+    await expect(page.getByText(/Context saved and activated/i)).toBeVisible();
+    await expect(page.getByTestId("context-draft-identity-status")).toContainText(/ready/i);
     await expect(page.locator(".context-status-badge").filter({ hasText: "active" })).toBeVisible();
     await expect(page.getByText("Effective context refreshed")).toBeVisible();
   });

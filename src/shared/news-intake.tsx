@@ -153,7 +153,18 @@ function NewsIntakeBody() {
   const desiredOn = Boolean(automatic?.desired);
   const statusLine = useMemo(() => formatAutomaticStatus(automatic), [automatic]);
   const pullValid = isPullFormValid({ pullSource, externalMediaId, articleId, limit });
-  const pullDisabled = !canTrigger || !pullValid || pullMutation.isPending || statusQuery.isError;
+  const isIntakeReady = (() => {
+    const status = statusQuery.data;
+    if (!status) return true;
+    if (typeof status.intake_ready === "boolean") return status.intake_ready;
+    if (status.management_identity) return Boolean(status.management_identity.ready);
+    return true;
+  })();
+  const identityStatus = statusQuery.data?.management_identity?.status ?? null;
+  const pullDisabled =
+    !canTrigger || !pullValid || pullMutation.isPending || statusQuery.isError || !isIntakeReady;
+  const automaticDisabled =
+    !canManage || automaticMutation.isPending || statusQuery.isPending || statusQuery.isError || !isIntakeReady;
   const runsPage = runsQuery.data;
   const runsHasMore = Boolean(runsPage?.has_more);
   const runsPageNumber = Math.floor(runsOffset / RUNS_PAGE_SIZE) + 1;
@@ -183,6 +194,14 @@ function NewsIntakeBody() {
         </div>
       )}
 
+      {!statusQuery.isError && statusQuery.data && !isIntakeReady && (
+        <div className="preference-notice error" role="alert" data-testid="news-intake-identity-block">
+          Management identity must be ready before Pull or automatic intake
+          {identityStatus ? ` (status: ${identityStatus})` : ""}. Open Company Context to retry identity or revise the
+          approved context.
+        </div>
+      )}
+
       <section className="news-intake-section" data-testid="news-intake-automatic">
         <div className="news-intake-section-head news-intake-section-head-row">
           <div>
@@ -198,6 +217,11 @@ function NewsIntakeBody() {
             {!canManage && (
               <p className="news-intake-permission-note">Your role can view this setting but cannot change it.</p>
             )}
+            {canManage && !isIntakeReady && (
+              <p className="news-intake-permission-note" data-testid="news-intake-automatic-blocked-note">
+                Automatic intake stays off until management identity is ready.
+              </p>
+            )}
           </div>
           <button
             className={`toggle ${desiredOn ? "is-on" : ""}`}
@@ -205,9 +229,9 @@ function NewsIntakeBody() {
             aria-checked={desiredOn}
             aria-label="Automatic intake"
             data-testid="news-intake-automatic-switch"
-            disabled={!canManage || automaticMutation.isPending || statusQuery.isPending || statusQuery.isError}
+            disabled={automaticDisabled}
             onClick={() => {
-              if (!canManage || automaticMutation.isPending) return;
+              if (automaticDisabled) return;
               setNotice(null);
               automaticMutation.mutate(!desiredOn);
             }}
@@ -360,6 +384,11 @@ function NewsIntakeBody() {
 
         {!canTrigger && (
           <p className="news-intake-permission-note">Your role cannot pull articles.</p>
+        )}
+        {canTrigger && !isIntakeReady && (
+          <p className="news-intake-permission-note" data-testid="news-intake-pull-blocked-note">
+            Pull is disabled until management identity is ready for this company.
+          </p>
         )}
 
         <div className="preference-footer">
@@ -583,6 +612,12 @@ function newsIntakeError(error: unknown, surface: "status" | "automatic" | "pull
       if (surface === "automatic") return "Your role cannot change Automatic intake.";
       if (surface === "pull") return "Your role cannot pull articles.";
       return "Your session is not authorized for News intake.";
+    }
+    if (code === "MANAGEMENT_IDENTITY_REQUIRED") {
+      return (
+        error.response?.data?.error?.message ??
+        "Management identity must be ready before Pull or automatic intake. Open Company Context to retry identity."
+      );
     }
     if (code === "VALIDATION_ERROR") {
       return error.response?.data?.error?.message ?? "Check the fields and try again.";

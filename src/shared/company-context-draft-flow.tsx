@@ -199,7 +199,11 @@ function CompanyContextDraftFlowBody() {
       }
       if (!canDraft) throw Object.assign(new Error("This action is not authorized for the current company scope."), { code: "FORBIDDEN" });
       const saved = await editDraft(current, fields, saveNote);
-      return { draft: saved, effective_context: null as CompanyContextDto | null };
+      return {
+        draft: saved,
+        effective_context: null as CompanyContextDto | null,
+        management_identity: null as CompanyContextDto["management_identity"],
+      };
     },
     onSuccess: (data) => {
       setDraft(data.draft);

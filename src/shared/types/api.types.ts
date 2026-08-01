@@ -98,6 +98,7 @@ export interface CompanyContextDto {
   draft_id: string | null;
   fields: Record<string, unknown>;
   field_sources?: Array<{ field: string; source_locator: string }>;
+  field_review?: Record<string, string> | null;
   missing_fields?: string[];
   completeness?: CompanyContextCompletenessDto | null;
   change_reason: string | null;
@@ -117,6 +118,12 @@ export interface CompanyContextCompletenessDto {
   missing_core_fields: string[];
   missing_recommended_fields: string[];
   field_status?: Array<{ field: string; label: string; level: string; present: boolean }>;
+  required_fields?: string[];
+  ai_review_fields?: string[];
+  optional_fields?: string[];
+  missing_required_fields?: string[];
+  pending_review_fields?: string[];
+  field_review?: Record<string, string>;
 }
 
 export interface AlertPreferenceDto {

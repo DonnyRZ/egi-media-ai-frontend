@@ -25,7 +25,7 @@ type Draft = {
   status: DraftStatus;
   is_effective: boolean;
   revision: number;
-  result: { status?: string; context?: Record<string, unknown>; completeness?: CompanyContextCompletenessDto | null };
+  result: { status?: string; context?: Record<string, unknown>; field_review?: Record<string, string> | null; completeness?: CompanyContextCompletenessDto | null };
   review: {
     submitted_by: string | null;
     submitted_at: string | null;
@@ -67,10 +67,10 @@ async function readDraft(draftId: string) {
   const response = await axiosClient.get<ApiSuccessResponse<Draft>>(API_ENDPOINTS.companyContextDraftById(draftId));
   return response.data.data;
 }
-async function editDraft(draft: Draft, fields: Record<string, unknown>, note: string) {
+async function editDraft(draft: Draft, fields: Record<string, unknown>, fieldReview: Record<string, string>, note: string) {
   const response = await axiosClient.patch<ApiSuccessResponse<Draft>>(
     API_ENDPOINTS.companyContextDraftById(draft.draft_id),
-    { fields, review_note: note || null },
+    { fields, field_review: fieldReview, review_note: note || null },
     { headers: { "If-Match": String(draft.revision), "Idempotency-Key": key("edit") } },
   );
   return response.data.data;
@@ -101,8 +101,8 @@ async function retryManagementIdentity(companyId: string) {
   return response.data.data.management_identity;
 }
 /** Owner/admin Save: persist fields then activate. Requires company_context.approve on the approve step. */
-async function saveAndActivate(draft: Draft, fields: Record<string, unknown>, note: string) {
-  const saved = await editDraft(draft, fields, note);
+async function saveAndActivate(draft: Draft, fields: Record<string, unknown>, fieldReview: Record<string, string>, note: string) {
+  const saved = await editDraft(draft, fields, fieldReview, note);
   return approveDraft(saved, note);
 }
 async function readEffectiveContext(companyId: string) {
@@ -139,6 +139,7 @@ function CompanyContextDraftFlowBody() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [fields, setFields] = useState<Record<string, unknown>>({});
+  const [fieldReview, setFieldReview] = useState<Record<string, string>>({});
   const [saveNote, setSaveNote] = useState("");
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [identityStatus, setIdentityStatus] = useState<string | null>(null);
@@ -181,6 +182,7 @@ function CompanyContextDraftFlowBody() {
     onSuccess: (data) => {
       setDraft(data);
       setFields(data.result.context ?? {});
+      setFieldReview(data.result.field_review ?? data.result.completeness?.field_review ?? {});
       queryClient.setQueryData(["company-context-draft", data.draft_id], data);
       setNotice({
         kind: "success",
@@ -195,10 +197,10 @@ function CompanyContextDraftFlowBody() {
     mutationFn: async () => {
       const current = currentDraft();
       if (canApprove && coreComplete && (current.status === "draft" || current.status === "in_review")) {
-        return saveAndActivate(current, fields, saveNote);
+        return saveAndActivate(current, fields, fieldReview, saveNote);
       }
       if (!canDraft) throw Object.assign(new Error("This action is not authorized for the current company scope."), { code: "FORBIDDEN" });
-      const saved = await editDraft(current, fields, saveNote);
+      const saved = await editDraft(current, fields, fieldReview, saveNote);
       return {
         draft: saved,
         effective_context: null as CompanyContextDto | null,
@@ -265,21 +267,31 @@ function CompanyContextDraftFlowBody() {
   const canGenerate =
     Boolean(companyId) && !isBusy && (mode === "pdf" ? Boolean(selectedFile) : Boolean(sourceValue.trim()));
   const isEditable = shownDraft && (shownDraft.status === "draft" || shownDraft.status === "in_review");
-  const coreComplete = isCoreContextComplete(fields);
+  const coreComplete = isDraftReviewComplete(fields, fieldReview);
   const saveLabel = canApprove && coreComplete ? "Save" : "Save draft";
 
   function updateField(keyName: string, value: string) {
     const existing = fields[keyName];
+    const nextValue = Array.isArray(existing) ? value.split("\n").map((item) => item.trim()).filter(Boolean) : value;
     setFields((current) => ({
       ...current,
-      [keyName]: Array.isArray(existing) ? value.split("\n").map((item) => item.trim()).filter(Boolean) : value,
+      [keyName]: nextValue,
     }));
+    if (hasFieldValue(nextValue)) setFieldReview((current) => ({ ...current, [keyName]: "user_confirmed" }));
+  }
+  function confirmField(keyName: string) {
+    setFieldReview((current) => ({ ...current, [keyName]: hasFieldValue(fields[keyName]) ? "user_confirmed" : "missing" }));
+  }
+  function markNotDisclosed(keyName: string) {
+    setFields((current) => ({ ...current, [keyName]: Array.isArray(current[keyName]) ? [] : null }));
+    setFieldReview((current) => ({ ...current, [keyName]: "reviewed_none_disclosed" }));
   }
   function refreshDraft() {
     draftQuery.refetch().then((result) => {
       if (result.data) {
         setDraft(result.data);
         setFields(result.data.result.context ?? {});
+        setFieldReview(result.data.result.field_review ?? result.data.result.completeness?.field_review ?? {});
       }
     });
   }
@@ -396,17 +408,17 @@ function CompanyContextDraftFlowBody() {
             </div>
             {!coreComplete && (
               <div className="context-missing-fields" role="status" data-testid="context-completeness">
-                <span>Core facts required before activation</span>
+                <span>Review required before activation</span>
                 <div>
-                  {coreMissingFields(fields).map((field) => <em key={field}>{humanize(field)}</em>)}
+                  {reviewBlockingFields(fields, fieldReview).map((field) => <em key={field}>{humanize(field)}</em>)}
                 </div>
-                <small className="context-flow-helper">Add these facts manually from the company profile. The AI will not invent them.</small>
+                <small className="context-flow-helper">Confirm AI proposals or mark undisclosed fields. The AI will not turn an inference into a fact automatically.</small>
               </div>
             )}
             <div className="context-edit-grid">
               {Object.entries(fields).map(([keyName, value]) => (
                 <label className="context-edit-field" key={keyName}>
-                  <span>{humanize(keyName)}</span>
+                  <span>{humanize(keyName)} <small className={`context-review-status status-${fieldReview[keyName] || "missing"}`}>{humanize(fieldReview[keyName] || "missing")}</small></span>
                   {Array.isArray(value) ? (
                     <textarea
                       value={value.join("\n")}
@@ -419,6 +431,16 @@ function CompanyContextDraftFlowBody() {
                       onChange={(event) => updateField(keyName, event.target.value)}
                       disabled={!isEditable || isBusy}
                     />
+                  )}
+                  {fieldReview[keyName] === "ai_proposed" && (
+                    <button type="button" className="context-review-button" onClick={() => confirmField(keyName)} disabled={isBusy}>
+                      Confirm AI proposal
+                    </button>
+                  )}
+                  {AI_REVIEW_CONTEXT_FIELDS.includes(keyName as (typeof AI_REVIEW_CONTEXT_FIELDS)[number]) && fieldReview[keyName] !== "reviewed_none_disclosed" && (
+                    <button type="button" className="context-review-button secondary" onClick={() => markNotDisclosed(keyName)} disabled={isBusy}>
+                      Mark not disclosed
+                    </button>
                   )}
                 </label>
               ))}
@@ -505,16 +527,16 @@ function ProgressStep({ label, active, status }: { label: string; active?: boole
 function humanize(value: string) {
   return value.replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
-const CORE_CONTEXT_FIELDS = ["name", "industry", "description", "products", "customers", "regions", "priorities", "risks"] as const;
-function coreMissingFields(fields: Record<string, unknown>) {
-  return CORE_CONTEXT_FIELDS.filter((field) => {
-    const value = fields[field];
-    return Array.isArray(value) ? value.length === 0 : typeof value !== "string" || value.trim().length === 0;
+const REQUIRED_CONTEXT_FIELDS = ["name", "industry", "description", "products", "customers", "regions", "priorities"] as const;
+const AI_REVIEW_CONTEXT_FIELDS = ["sub_industry", "competitors", "goals", "risks", "topics", "dependencies"] as const;
+function hasFieldValue(value: unknown) { return Array.isArray(value) ? value.length > 0 : typeof value === "string" && value.trim().length > 0; }
+function reviewBlockingFields(fields: Record<string, unknown>, review: Record<string, string>) {
+  return [...REQUIRED_CONTEXT_FIELDS, ...AI_REVIEW_CONTEXT_FIELDS].filter((field) => {
+    if (REQUIRED_CONTEXT_FIELDS.includes(field as (typeof REQUIRED_CONTEXT_FIELDS)[number])) return !hasFieldValue(fields[field]) || review[field] !== "user_confirmed";
+    return !["user_confirmed", "reviewed_none_disclosed"].includes(review[field]);
   });
 }
-function isCoreContextComplete(fields: Record<string, unknown>) {
-  return coreMissingFields(fields).length === 0;
-}
+function isDraftReviewComplete(fields: Record<string, unknown>, review: Record<string, string>) { return reviewBlockingFields(fields, review).length === 0; }
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
@@ -523,7 +545,7 @@ function errorMessage(error: unknown) {
   if (isAxiosError<{ error?: { message?: string; code?: string } }>(error)) {
     const code = error.response?.data?.error?.code;
     if (code === "VERSION_CONFLICT") return "This draft is stale. Refresh the draft before saving.";
-    if (code === "COMPANY_CONTEXT_INCOMPLETE") return "Add all missing core company facts before activating this context.";
+    if (code === "COMPANY_CONTEXT_INCOMPLETE") return "Review required fields and AI proposals before activating this context.";
     if (code === "UNAUTHORIZED" || code === "FORBIDDEN") return "This action is not authorized for the current company scope.";
     return error.response?.data?.error?.message ?? "The Company Context pipeline could not complete.";
   }

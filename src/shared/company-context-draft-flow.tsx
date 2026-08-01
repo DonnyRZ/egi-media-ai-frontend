@@ -15,7 +15,7 @@ import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
-import type { ApiSuccessResponse, CompanyContextDto, LanguagePreferenceDto } from "@/shared/types/api.types";
+import type { ApiSuccessResponse, CompanyContextCompletenessDto, CompanyContextDto, LanguagePreferenceDto } from "@/shared/types/api.types";
 
 type SourceMode = "pdf" | "url" | "text";
 type DraftStatus = "draft" | "in_review" | "approved";
@@ -25,7 +25,7 @@ type Draft = {
   status: DraftStatus;
   is_effective: boolean;
   revision: number;
-  result: { status?: string; context?: Record<string, unknown> };
+  result: { status?: string; context?: Record<string, unknown>; completeness?: CompanyContextCompletenessDto | null };
   review: {
     submitted_by: string | null;
     submitted_at: string | null;
@@ -194,7 +194,7 @@ function CompanyContextDraftFlowBody() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const current = currentDraft();
-      if (canApprove && (current.status === "draft" || current.status === "in_review")) {
+      if (canApprove && coreComplete && (current.status === "draft" || current.status === "in_review")) {
         return saveAndActivate(current, fields, saveNote);
       }
       if (!canDraft) throw Object.assign(new Error("This action is not authorized for the current company scope."), { code: "FORBIDDEN" });
@@ -223,7 +223,9 @@ function CompanyContextDraftFlowBody() {
       } else {
         setNotice({
           kind: "success",
-          text: "Draft saved. Activation requires a role with company context approve permission.",
+          text: coreComplete
+            ? "Draft saved. Activation requires a role with company context approve permission."
+            : "Draft saved. Add the missing core company facts before it can become active.",
         });
       }
     },
@@ -263,7 +265,8 @@ function CompanyContextDraftFlowBody() {
   const canGenerate =
     Boolean(companyId) && !isBusy && (mode === "pdf" ? Boolean(selectedFile) : Boolean(sourceValue.trim()));
   const isEditable = shownDraft && (shownDraft.status === "draft" || shownDraft.status === "in_review");
-  const saveLabel = canApprove ? "Save" : "Save draft";
+  const coreComplete = isCoreContextComplete(fields);
+  const saveLabel = canApprove && coreComplete ? "Save" : "Save draft";
 
   function updateField(keyName: string, value: string) {
     const existing = fields[keyName];
@@ -391,6 +394,15 @@ function CompanyContextDraftFlowBody() {
                   : "Pipeline output is ready. Edit fields, then Save."}
               <button onClick={refreshDraft}>Refresh</button>
             </div>
+            {!coreComplete && (
+              <div className="context-missing-fields" role="status" data-testid="context-completeness">
+                <span>Core facts required before activation</span>
+                <div>
+                  {coreMissingFields(fields).map((field) => <em key={field}>{humanize(field)}</em>)}
+                </div>
+                <small className="context-flow-helper">Add these facts manually from the company profile. The AI will not invent them.</small>
+              </div>
+            )}
             <div className="context-edit-grid">
               {Object.entries(fields).map(([keyName, value]) => (
                 <label className="context-edit-field" key={keyName}>
@@ -493,6 +505,16 @@ function ProgressStep({ label, active, status }: { label: string; active?: boole
 function humanize(value: string) {
   return value.replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
+const CORE_CONTEXT_FIELDS = ["name", "industry", "description", "products", "customers", "regions", "priorities", "risks"] as const;
+function coreMissingFields(fields: Record<string, unknown>) {
+  return CORE_CONTEXT_FIELDS.filter((field) => {
+    const value = fields[field];
+    return Array.isArray(value) ? value.length === 0 : typeof value !== "string" || value.trim().length === 0;
+  });
+}
+function isCoreContextComplete(fields: Record<string, unknown>) {
+  return coreMissingFields(fields).length === 0;
+}
 function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
@@ -501,6 +523,7 @@ function errorMessage(error: unknown) {
   if (isAxiosError<{ error?: { message?: string; code?: string } }>(error)) {
     const code = error.response?.data?.error?.code;
     if (code === "VERSION_CONFLICT") return "This draft is stale. Refresh the draft before saving.";
+    if (code === "COMPANY_CONTEXT_INCOMPLETE") return "Add all missing core company facts before activating this context.";
     if (code === "UNAUTHORIZED" || code === "FORBIDDEN") return "This action is not authorized for the current company scope.";
     return error.response?.data?.error?.message ?? "The Company Context pipeline could not complete.";
   }

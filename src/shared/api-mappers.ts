@@ -39,6 +39,7 @@ export function mapCompanyContext(dto: CompanyContextDto) {
     fields: dto.fields,
     fieldSources: dto.field_sources ?? [],
     missingFields: dto.missing_fields ?? [],
+    completeness: dto.completeness ?? null,
     changeReason: dto.change_reason,
     updatedBy: dto.updated_by,
     createdAt: dto.created_at,

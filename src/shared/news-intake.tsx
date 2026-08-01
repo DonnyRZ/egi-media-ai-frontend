@@ -161,6 +161,7 @@ function NewsIntakeBody() {
     return true;
   })();
   const identityStatus = statusQuery.data?.management_identity?.status ?? null;
+  const contextIncomplete = statusQuery.data?.company_context?.complete === false;
   const pullDisabled =
     !canTrigger || !pullValid || pullMutation.isPending || statusQuery.isError || !isIntakeReady;
   const automaticDisabled =
@@ -196,9 +197,9 @@ function NewsIntakeBody() {
 
       {!statusQuery.isError && statusQuery.data && !isIntakeReady && (
         <div className="preference-notice error" role="alert" data-testid="news-intake-identity-block">
-          Management identity must be ready before Pull or automatic intake
-          {identityStatus ? ` (status: ${identityStatus})` : ""}. Open Company Context to retry identity or revise the
-          approved context.
+          {contextIncomplete
+            ? `Company Context is incomplete. Add core facts before Pull or automatic intake${statusQuery.data.company_context?.missing_core_fields?.length ? `: ${statusQuery.data.company_context.missing_core_fields.map(humanize).join(", ")}` : ""}.`
+            : `Management identity must be ready before Pull or automatic intake${identityStatus ? ` (status: ${identityStatus})` : ""}. Open Company Context to retry identity or revise the approved context.`}
         </div>
       )}
 
@@ -604,6 +605,10 @@ function humanState(state: string) {
   return state.replaceAll("_", " ");
 }
 
+function humanize(value: string) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function newsIntakeError(error: unknown, surface: "status" | "automatic" | "pull" | "runs") {
   if (error instanceof Error && !isAxiosError(error)) return error.message;
   if (isAxiosError<{ error?: { code?: string; message?: string } }>(error)) {
@@ -618,6 +623,9 @@ function newsIntakeError(error: unknown, surface: "status" | "automatic" | "pull
         error.response?.data?.error?.message ??
         "Management identity must be ready before Pull or automatic intake. Open Company Context to retry identity."
       );
+    }
+    if (code === "COMPANY_CONTEXT_INCOMPLETE") {
+      return error.response?.data?.error?.message ?? "Company Context is incomplete. Open Company Context and add the missing core facts.";
     }
     if (code === "VALIDATION_ERROR") {
       return error.response?.data?.error?.message ?? "Check the fields and try again.";

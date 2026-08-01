@@ -99,11 +99,24 @@ export interface CompanyContextDto {
   fields: Record<string, unknown>;
   field_sources?: Array<{ field: string; source_locator: string }>;
   missing_fields?: string[];
+  completeness?: CompanyContextCompletenessDto | null;
   change_reason: string | null;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
   management_identity?: ManagementIdentityDto | null;
+}
+
+export interface CompanyContextCompletenessDto {
+  status: string;
+  complete: boolean;
+  blocking: boolean;
+  rule_version: string;
+  core_fields: string[];
+  recommended_fields: string[];
+  missing_core_fields: string[];
+  missing_recommended_fields: string[];
+  field_status?: Array<{ field: string; label: string; level: string; present: boolean }>;
 }
 
 export interface AlertPreferenceDto {
@@ -144,6 +157,13 @@ export interface NewsIntakeStatusDto {
     status: string;
     context_version: number | null;
     has_effective_context: boolean;
+  };
+  company_context?: {
+    complete: boolean;
+    status: string;
+    rule_version: string | null;
+    missing_core_fields: string[];
+    missing_recommended_fields: string[];
   };
 }
 

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { Link } from "@/i18n/navigation";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { EXTERNAL_INTAKE_MEDIA } from "@/shared/news-feed-channels";
@@ -199,7 +200,7 @@ function NewsIntakeBody() {
         <div className="preference-notice error" role="alert" data-testid="news-intake-identity-block">
           {contextIncomplete
             ? `Company Context is incomplete. Add core facts before Pull or automatic intake${statusQuery.data.company_context?.missing_core_fields?.length ? `: ${statusQuery.data.company_context.missing_core_fields.map(humanize).join(", ")}` : ""}.`
-            : `Management identity must be ready before Pull or automatic intake${identityStatus ? ` (status: ${identityStatus})` : ""}. Open Company Context to retry identity or revise the approved context.`}
+            : <>Management identity must be ready before Pull or automatic intake{identityStatus ? ` (status: ${identityStatus})` : ""}. <Link className="news-intake-blocker-link" href="/settings/company-context/versions">Open Company Context</Link> to retry identity or revise the approved context.</>}
         </div>
       )}
 

@@ -1,77 +1,35 @@
 import { test, expect } from "@playwright/test";
-import fs from "node:fs";
-import path from "node:path";
-
-function bootstrapCreds() {
-  const envPath = path.resolve("..", "egi-media-ai-backend", ".env");
-  const raw = fs.readFileSync(envPath, "utf8");
-  const email = (raw.match(/^BOOTSTRAP_ADMIN_EMAIL=(.*)$/m) || [])[1]?.trim();
-  const password = (raw.match(/^BOOTSTRAP_ADMIN_PASSWORD=(.*)$/m) || [])[1]?.trim();
-  if (!email || !password) throw new Error("Missing BOOTSTRAP_ADMIN_* in backend .env");
-  return { email, password };
-}
+import { loginAsPlatformSuperadmin, PLATFORM_PERMISSIONS } from "./support/scope-test-session.mjs";
 
 test.describe("Loop A/B platform_superadmin provisioning", () => {
   test("session permissions unlock provisioning UX", async ({ page }) => {
     test.setTimeout(90_000);
-    const { email, password } = bootstrapCreds();
-    const capture = { login: null, session: null };
-
-    await page.goto("/id/login");
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
-    await page.reload();
-
-    const networkErrors = [];
-    page.on("requestfailed", (request) => {
-      if (request.url().includes("/api/v1/auth/login")) {
-        networkErrors.push({ url: request.url(), error: request.failure()?.errorText || "unknown" });
+    const capture = { login: { status: 200, role: "platform_superadmin", tenant_id: null }, session: { status: 200, role: "platform_superadmin", permissions: PLATFORM_PERMISSIONS, hasManage: true } };
+    let tenants = [{ tenant_id: "tenant-egiresources", name: "EGI Resources", status: "active" }];
+    let companies = [{ company_id: "company-agat", name: "AGAT Laser Beam", status: "active" }];
+    await page.route((url) => url.pathname === "/api/v1/platform/tenants", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: tenants, meta: { page: 1, limit: 100, total: tenants.length } } }) });
+        return;
       }
+      const body = route.request().postDataJSON();
+      const tenant = { tenant_id: "tenant-northstar", name: body.name, status: "active" };
+      tenants = [tenant, ...tenants];
+      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { tenant }, meta: { request_id: "platform-provisioning" } }) });
     });
-    page.on("response", async (response) => {
-      const url = response.url();
-      try {
-        if (url.includes("/api/v1/auth/login") && response.request().method() === "POST") {
-          const body = await response.json().catch(() => null);
-          capture.login = { status: response.status(), url, role: body?.data?.actor?.role ?? null, tenant_id: body?.data?.tenant_id ?? null, error: body?.error || body?.message || null, bodyKeys: body ? Object.keys(body) : [] };
-        }
-        if (url.includes("/api/v1/auth/session") && response.request().method() === "GET") {
-          const body = await response.json().catch(() => null);
-          capture.session = {
-            status: response.status(),
-            role: body?.data?.role ?? null,
-            permissions: body?.data?.permissions ?? null,
-            hasManage: Array.isArray(body?.data?.permissions) && body.data.permissions.includes("platform.tenants.manage"),
-          };
-        }
-      } catch {
-        /* ignore parse races */
+    await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-egiresources/companies", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: companies, meta: { page: 1, limit: 100, total: companies.length } } }) });
+        return;
       }
+      const body = route.request().postDataJSON();
+      const company = { company_id: "company-northstar", name: body.name, status: "active" };
+      companies = [company, ...companies];
+      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { company }, meta: { request_id: "platform-provisioning" } }) });
     });
-
-    await page.getByLabel("Work email").fill(email);
-    await page.getByLabel("Password").fill(password);
-    await page.getByRole("button", { name: "Continue to workspace" }).click();
-    await page.waitForTimeout(3000);
-    console.log("AFTER_LOGIN", JSON.stringify({ capture, networkErrors, url: page.url(), alert: await page.locator("[role=alert]").innerText().catch(() => null) }, null, 2));
-    await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 20_000 });
-
-    await expect.poll(() => capture.login?.status, { timeout: 15_000 }).toBe(200);
-    await expect.poll(() => capture.session?.status, { timeout: 15_000 }).toBe(200);
-
-    const store = await page.evaluate(() => {
-      const raw = localStorage.getItem("egi_media_ai_session");
-      const parsed = raw ? JSON.parse(raw) : null;
-      return {
-        localPermissions: parsed?.permissions ?? null,
-        localRole: parsed?.actor?.role ?? null,
-        hasManageInLocal: Array.isArray(parsed?.permissions) && parsed.permissions.includes("platform.tenants.manage"),
-      };
-    });
-
-    console.log("CAPTURE", JSON.stringify({ capture, store }, null, 2));
+    await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-egiresources/owner", async (route) => route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { membership_id: "membership-owner", status: "invited" }, meta: { request_id: "platform-provisioning" } }) }));
+    await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-egiresources/memberships", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [], meta: { page: 1, limit: 100, total: 0 } } }) }));
+    await loginAsPlatformSuperadmin(page);
 
     await page.goto("/id/settings/platform");
     await page.waitForLoadState("networkidle");
@@ -79,29 +37,70 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     // Give AuthGate time to apply session permissions after full navigation.
     await page.waitForTimeout(1500);
 
-    const pageText = await page.locator("main, .settings-hub, .standard-state").first().innerText().catch(() => page.locator("body").innerText());
-    console.log("PLATFORM_PAGE_SNIPPET", pageText.slice(0, 500));
-    console.log("STORE_AFTER_NAV", JSON.stringify(await page.evaluate(() => {
-      const raw = localStorage.getItem("egi_media_ai_session");
-      const parsed = raw ? JSON.parse(raw) : null;
-      return { localPermissions: parsed?.permissions ?? null, localRole: parsed?.actor?.role ?? null };
-    })));
-
     const forbidden = page.getByRole("heading", { name: /platform administration only/i });
-    const provisioningTitle = page.getByRole("heading", { name: /customer provisioning/i });
+    const provisioningTitle = page.getByRole("heading", { name: /customer workspaces/i });
 
     // Loop A assert
     expect(capture.session?.hasManage).toBe(true);
     await expect(forbidden).toHaveCount(0, { timeout: 15_000 });
     await expect(provisioningTitle).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("alert").filter({ hasText: /could not load tenants|tenants are unavailable/i })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "System health", exact: true })).toBeVisible();
+    await expect(page.locator("a.platform-capability-link").filter({ hasText: "System health" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Audit log", exact: true })).toBeVisible();
+    await expect(page.locator("a.platform-capability-link").filter({ hasText: "Audit log" })).toBeVisible();
+    await expect(page).toHaveScreenshot("platform-provisioning-initial.png", { fullPage: true });
+
+    await page.getByRole("button", { name: "New workspace" }).click();
+    await expect(page.getByLabel("Tenant name")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create workspace" })).toBeDisabled();
+    await expect(page).toHaveScreenshot("platform-provisioning-new-workspace-empty.png", { fullPage: true });
+    await page.getByLabel("Tenant name").fill("Northstar Workspace");
+    await page.getByRole("button", { name: "Create workspace" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Workspace created." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Northstar Workspace" })).toBeVisible();
 
     // Loop B: EGI Resources tenant + AGAT company
-    const egiRow = page.locator(".access-row").filter({ hasText: /EGI Resources/i }).first();
+    const egiRow = page.locator(".platform-tenant-row").filter({ hasText: /EGI Resources/i }).first();
     await expect(egiRow).toBeVisible({ timeout: 15_000 });
-    await egiRow.getByRole("button", { name: "Select" }).click();
+    await egiRow.getByRole("button", { name: "Open workspace" }).click();
     await expect(page.getByText(/AGAT Laser Beam/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("alert").filter({ hasText: /could not load companies|companies are unavailable/i })).toHaveCount(0);
     await expect(page.getByLabel("Owner email")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Assign owner" })).toBeDisabled();
+    await expect(page).toHaveScreenshot("platform-provisioning-selected-workspace.png", { fullPage: true });
+
+    await page.getByLabel("Company name").fill("Northstar Analytics");
+    await page.getByRole("button", { name: "Create company" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Company created." })).toBeVisible();
+    await expect(page.locator(".platform-company-list").getByText("Northstar Analytics", { exact: true })).toBeVisible();
+    await page.getByLabel("Owner email").fill("owner@northstar.example");
+    await page.getByLabel("Owner full name").fill("Northstar Owner");
+    await page.getByLabel("Owner company").selectOption("company-northstar");
+    await expect(page.getByRole("button", { name: "Assign owner" })).toBeEnabled();
+    await page.getByRole("button", { name: "Assign owner" }).click();
+    await expect(page.getByTestId("provisioning-owner-next-steps")).toContainText("Tenant owner assigned");
+    await expect(page.getByRole("link", { name: "Open signup page" })).toHaveAttribute("href", "/id/signup");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(page).toHaveScreenshot("platform-provisioning-owner-assigned.png", { fullPage: true });
+  });
+
+  test("empty registry and create failure remain actionable", async ({ page }) => {
+    await page.route((url) => url.pathname === "/api/v1/platform/tenants", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [], meta: { page: 1, limit: 100, total: 0 } } }) });
+        return;
+      }
+      await route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ success: false, error: { code: "VALIDATION_ERROR", message: "Workspace name is already in use." } }) });
+    });
+    await loginAsPlatformSuperadmin(page);
+    await page.goto("/id/settings/platform");
+    await expect(page.getByText("No customer workspaces yet")).toBeVisible();
+    await expect(page).toHaveScreenshot("platform-provisioning-empty.png", { fullPage: true });
+    await page.getByRole("button", { name: "New workspace" }).click();
+    await page.getByLabel("Tenant name").fill("Existing Workspace");
+    await page.getByRole("button", { name: "Create workspace" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Workspace could not be created" })).toBeVisible();
+    await expect(page).toHaveScreenshot("platform-provisioning-create-error.png", { fullPage: true });
   });
 });

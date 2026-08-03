@@ -7,9 +7,12 @@ import { useEffect, useState } from "react";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
+import { PermissionGate } from "@/shared/permission-guard";
 import { useSessionStore } from "@/shared/session-store";
+import { activeCompanyLabel } from "@/shared/company-options";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import type { AlertPreferenceDto, ApiSuccessResponse } from "@/shared/types/api.types";
+import { StandardState } from "@/shared/ux-state";
 
 type QuietHours = { start: string; end: string } | null;
 type PreferenceForm = Omit<AlertPreferenceDto, "quiet_hours"> & { quiet_hours: QuietHours; quiet_hours_enabled: boolean };
@@ -50,7 +53,12 @@ export function AlertPreferences() {
       reason="Alert preferences are scoped to an active company. Select a company before editing delivery settings."
       nextStep="Pick a company in the header switcher. If none exist, provision one under Platform, then return here."
     >
-      <AlertPreferencesBody />
+      <PermissionGate
+        permission="alert.preference.manage"
+        fallback={<StandardState kind="forbidden" title="Alert preferences restricted" message="Your role cannot change alert evaluation preferences." />}
+      >
+        <AlertPreferencesBody />
+      </PermissionGate>
     </ScopeRequired>
   );
 }
@@ -58,6 +66,7 @@ export function AlertPreferences() {
 function AlertPreferencesBody() {
   const companyId = useSessionStore((state) => state.activeCompanyId);
   const actor = useSessionStore((state) => state.actor);
+  const authorizedCompanies = useSessionStore((state) => state.authorizedCompanies);
   const [form, setForm] = useState<PreferenceForm>({
     recipient_id: "",
     direct_high_enabled: false,
@@ -122,7 +131,7 @@ function AlertPreferencesBody() {
       </div>
       <div className="preference-scope">
         <span>Company scope</span>
-        <strong>{companyId}</strong>
+        <strong>{activeCompanyLabel(authorizedCompanies, companyId)}</strong>
         <small>{actor?.email ?? "Current authenticated actor"}</small>
       </div>
       <section className="preference-card">
@@ -174,6 +183,8 @@ function AlertPreferencesBody() {
             className={`toggle ${form.quiet_hours_enabled ? "is-on" : ""}`}
             role="switch"
             aria-checked={form.quiet_hours_enabled}
+            aria-label="Quiet hours"
+            type="button"
             onClick={() => update("quiet_hours_enabled", !form.quiet_hours_enabled)}
           >
             <span />
@@ -237,7 +248,7 @@ function PreferenceToggle({
         <h2>{title}</h2>
         <p>{description}</p>
       </div>
-      <button className={`toggle ${checked ? "is-on" : ""}`} role="switch" aria-checked={checked} onClick={() => onChange(!checked)}>
+      <button className={`toggle ${checked ? "is-on" : ""}`} role="switch" aria-checked={checked} aria-label={title} type="button" onClick={() => onChange(!checked)}>
         <span />
       </button>
     </div>

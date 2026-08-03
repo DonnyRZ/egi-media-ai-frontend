@@ -2,9 +2,10 @@
 
 import dynamic from "next/dynamic";
 
-import { startTransition, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { isAxiosError } from "axios";
+import { startTransition, useDeferredValue, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Bell, Bookmark, Building2, ChevronDown, FileText, LayoutDashboard, LogOut, Menu, Search, Settings, UserRound, Users, X, type LucideIcon } from "lucide-react";
+import { Activity, ArrowRight, Bell, Bookmark, Building2, ChevronDown, FileText, LayoutDashboard, LogOut, Menu, Search, Settings, ShieldCheck, UserRound, Users, X, type LucideIcon } from "lucide-react";
 
 import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import { useSessionStore } from "@/shared/session-store";
@@ -14,12 +15,13 @@ import { SavedIssueControl } from "@/shared/saved-issue-control";
 import { CompleteIssueControl } from "@/shared/complete-issue-control";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
-import type { ApiSuccessResponse, CompanyOptionListDto } from "@/shared/types/api.types";
+import type { ApiSuccessResponse, CompanyContextDto, CompanyOptionListDto, InboxEmailListDto, IssueCardDto, IssueListDto, NewsIntakeStatusDto } from "@/shared/types/api.types";
 import { PermissionGate } from "@/shared/permission-guard";
 import { OptimisticNavView, hasOptimisticNavView, prefetchOptimisticNavViews, toLocalePath } from "@/shared/optimistic-nav-view";
 import { SoftNavLink, SoftNavProvider } from "@/shared/soft-nav";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import { mergeCompanyOptions, activeCompanyLabel, displayCompanyName, displayCompanyInitial, resolveActiveCompany } from "@/shared/company-options";
+import { PlatformProvisioning } from "@/shared/platform-provisioning";
 
 function isNavActive(href: string, path: string) {
   return href === "/" ? path === "/" : path.startsWith(href);
@@ -48,8 +50,35 @@ const IssueDetailDrawer = dynamic(() => import("@/shared/issue-detail-drawer").t
   loading: () => null,
 });
 
-type IconName = "grid" | "bell" | "file" | "bookmark" | "settings" | "search" | "chevron" | "menu" | "close" | "user" | "users" | "building" | "logout" | "arrow";
+type IconName = "grid" | "bell" | "file" | "bookmark" | "settings" | "search" | "chevron" | "menu" | "close" | "user" | "users" | "building" | "logout" | "arrow" | "activity" | "shield";
 async function readCompanies() { const response = await axiosClient.get<ApiSuccessResponse<CompanyOptionListDto>>(API_ENDPOINTS.companies); return response.data.data.items; }
+async function readNotificationInbox() {
+  const response = await axiosClient.get<ApiSuccessResponse<InboxEmailListDto>>(API_ENDPOINTS.inboxEmails, { params: { page: 1, limit: 50 } });
+  return response.data.data;
+}
+async function readIntakeStatus() {
+  const response = await axiosClient.get<ApiSuccessResponse<NewsIntakeStatusDto>>(API_ENDPOINTS.newsIntakeStatus);
+  return response.data.data;
+}
+async function readContextReadiness(companyId: string) {
+  try {
+    const response = await axiosClient.get<ApiSuccessResponse<CompanyContextDto>>(API_ENDPOINTS.companyContext(companyId));
+    const context = response.data.data;
+    return {
+      hasEffectiveContext: true,
+      identityStatus: context.management_identity?.status ?? "missing",
+    };
+  } catch (error) {
+    if (isAxiosError<{ error?: { code?: string } }>(error) && error.response?.status === 404 && error.response.data?.error?.code === "NOT_FOUND") {
+      return { hasEffectiveContext: false, identityStatus: "missing" };
+    }
+    throw error;
+  }
+}
+async function readGlobalSearch(query: string) {
+  const response = await axiosClient.get<ApiSuccessResponse<IssueListDto>>(API_ENDPOINTS.issues, { params: { q: query, page: 1, limit: 8 } });
+  return response.data.data;
+}
 
 const ICONS: Record<IconName, LucideIcon> = {
   grid: LayoutDashboard,
@@ -66,11 +95,97 @@ const ICONS: Record<IconName, LucideIcon> = {
   building: Building2,
   logout: LogOut,
   arrow: ArrowRight,
+  activity: Activity,
+  shield: ShieldCheck,
 };
 
 function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   const Component = ICONS[name];
   return <Component size={size} strokeWidth={2} aria-hidden="true" />;
+}
+
+function GlobalSearch({
+  companyId,
+  hasCompany,
+  canReadIssues,
+  resetKey,
+  onOpenIssue,
+}: {
+  companyId: string | null;
+  hasCompany: boolean;
+  canReadIssues: boolean;
+  resetKey: string;
+  onOpenIssue: (issueId: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [focused, setFocused] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const deferredValue = useDeferredValue(value);
+  const queryText = deferredValue.trim();
+  const query = useQuery({
+    queryKey: ["global-search", companyId, queryText],
+    queryFn: () => readGlobalSearch(queryText),
+    enabled: Boolean(companyId && hasCompany && canReadIssues && queryText.length >= 2),
+    staleTime: 10_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    setValue("");
+    setFocused(false);
+  }, [resetKey, companyId]);
+  useEffect(() => {
+    function closeOnOutsideClick(event: globalThis.MouseEvent) {
+      if (!searchRef.current?.contains(event.target as Node)) setFocused(false);
+    }
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, []);
+
+  const showResults = focused && value.trim().length >= 2;
+  const placeholder = !hasCompany ? "Select a company to search" : canReadIssues ? "Search intelligence" : "Search unavailable for this role";
+
+  return (
+    <div ref={searchRef} className="global-search-wrap">
+      <form className={`global-search ${!hasCompany || !canReadIssues ? "is-disabled" : ""}`} onSubmit={(event) => event.preventDefault()}>
+        <Icon name="search" size={17} />
+        <input
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onFocus={() => setFocused(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setFocused(false);
+          }}
+          placeholder={placeholder}
+          aria-label="Search intelligence"
+          disabled={!hasCompany || !canReadIssues}
+        />
+        {value && <button type="button" className="global-search-clear" aria-label="Clear search" onClick={() => setValue("")}><X size={15} aria-hidden="true" /></button>}
+      </form>
+      {showResults && (
+        <div className="shell-popover global-search-popover" role="listbox" aria-label="Search results">
+          {query.isPending ? (
+            <div className="global-search-state">Searching intelligence...</div>
+          ) : query.isError ? (
+            <div className="global-search-state is-error">Search is temporarily unavailable.</div>
+          ) : !query.data?.items.length ? (
+            <div className="global-search-state">No matching intelligence.</div>
+          ) : (
+            query.data.items.map((issue) => <GlobalSearchResult key={issue.issue_id} issue={issue} onOpen={() => { onOpenIssue(issue.issue_id); setValue(""); setFocused(false); }} />)
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GlobalSearchResult({ issue, onOpen }: { issue: IssueCardDto; onOpen: () => void }) {
+  return (
+    <button type="button" className="global-search-result" role="option" aria-selected="false" onClick={onOpen}>
+      <span className="global-search-result-copy"><strong>{issue.title || "Untitled issue"}</strong><small>{issue.one_liner || "No one-liner available."}</small></span>
+      <span className="global-search-result-meta">{issue.priority || "Unprioritized"}</span>
+    </button>
+  );
 }
 
 const navigation = [
@@ -81,6 +196,10 @@ const navigation = [
   { href: "/saved", label: "Saved", icon: "bookmark" as const },
 ];
 
+const platformNavigation = [
+  { href: "/settings/platform", label: "Platform overview", icon: "building" as const },
+];
+
 const PAGE_TITLES: Array<[prefix: string, title: string]> = [
   ["/settings/company-context/draft", "Company Context"],
   ["/settings/company-context", "Company Context"],
@@ -88,8 +207,11 @@ const PAGE_TITLES: Array<[prefix: string, title: string]> = [
   ["/settings/news-intake", "News intake"],
   ["/settings/display-language", "Display language"],
   ["/settings/companies", "Companies"],
-  ["/settings/platform", "Provisioning"],
+  ["/settings/platform", "Platform overview"],
+  ["/settings/platform/health", "System health"],
+  ["/settings/platform/audit-log", "Audit log"],
   ["/settings/access", "Access"],
+  ["/settings/audit-log", "Audit log"],
   ["/settings", "Settings"],
   ["/issues", "News Feed"],
   ["/alerts", "Alerts"],
@@ -111,13 +233,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [companyOpen, setCompanyOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const sidebarRef = useRef<HTMLElement>(null);
   const prevPathnameRef = useRef(pathname);
-  const { isMobileNavOpen, setMobileNavOpen, openIssueId } = useUiStore();
+  const { isMobileNavOpen, setMobileNavOpen, openIssueId, openIssue } = useUiStore();
   const { activeCompanyId, tenantId, setActiveCompanyId, setAuthenticatedSession, clearSession, actor, authorizedCompanies, permissions } = useSessionStore();
   const { hasCompany } = useWorkspaceScope();
-  const companiesQuery = useQuery({ queryKey: ["authorized-companies"], queryFn: readCompanies, enabled: true, staleTime: 5 * 60_000, gcTime: 30 * 60_000, refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false });
+  const isPlatformAdmin = actor?.role === "platform_superadmin";
+  const sidebarNavigation = isPlatformAdmin ? platformNavigation : navigation;
+  const companiesQuery = useQuery({ queryKey: ["authorized-companies"], queryFn: readCompanies, enabled: !isPlatformAdmin, staleTime: 5 * 60_000, gcTime: 30 * 60_000, refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false });
   const companies = mergeCompanyOptions(
     companiesQuery.data,
     authorizedCompanies,
@@ -131,8 +254,73 @@ export function AppShell({ children }: { children: ReactNode }) {
   const profileName = actor?.fullName || actor?.email || "Workspace user";
   const profileRole = actor?.role ? actor.role.replaceAll("_", " ") : "Workspace member";
   const profileInitial = profileName.trim().slice(0, 1).toUpperCase() || "U";
+  const canReadAlerts = permissions.includes("alert.read");
+  const canReadIntake = permissions.includes("news.intake.read");
+  const canReadContext = permissions.includes("company_context.read");
+  const intakeStatusQuery = useQuery({
+    queryKey: ["shell-intake-status", activeCompanyId],
+    queryFn: readIntakeStatus,
+    enabled: Boolean(activeCompanyId && canReadIntake),
+    staleTime: 15_000,
+    retry: false,
+  });
+  const contextReadinessQuery = useQuery({
+    queryKey: ["shell-company-context", activeCompanyId],
+    queryFn: () => readContextReadiness(activeCompanyId as string),
+    enabled: Boolean(activeCompanyId && canReadContext && !canReadIntake),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const contextReadiness = contextReadinessQuery.data;
+  const intelligenceStatus = !hasCompany
+    ? "Select a company"
+    : canReadIntake
+      ? intakeStatusQuery.isPending
+        ? "Checking engine status"
+        : intakeStatusQuery.isError
+          ? "Engine status unavailable"
+            : intakeStatusQuery.data?.intake_ready
+            ? "Intelligence engine ready"
+            : intakeStatusQuery.data?.management_identity?.has_effective_context && intakeStatusQuery.data.management_identity.status !== "ready"
+              ? "Identity needs attention"
+              : "Context setup required"
+      : !canReadContext
+        ? "Workspace ready"
+        : contextReadinessQuery.isPending
+          ? "Checking context status"
+          : contextReadinessQuery.isError
+            ? "Context status unavailable"
+            : contextReadiness?.hasEffectiveContext && contextReadiness.identityStatus === "ready"
+              ? "Intelligence engine ready"
+              : contextReadiness?.hasEffectiveContext
+                ? "Identity needs attention"
+                : "Context setup required";
+  const intelligenceStatusTone = !hasCompany || intakeStatusQuery.data?.intake_ready === false || contextReadiness?.hasEffectiveContext === false ? "is-attention" : intakeStatusQuery.isError || contextReadinessQuery.isError ? "is-warning" : "";
+  const notificationQuery = useQuery({
+    queryKey: ["notification-inbox", activeCompanyId, actor?.id],
+    queryFn: readNotificationInbox,
+    enabled: Boolean(activeCompanyId && canReadAlerts),
+    staleTime: 10_000,
+    retry: false,
+  });
+  const unreadNotifications = notificationQuery.data?.items.filter((item) => !item.read).length ?? 0;
+  const notificationMessage = !hasCompany
+    ? "Select a company to see its notifications."
+    : !canReadAlerts
+      ? "Notifications are not available for this role."
+      : notificationQuery.isPending
+        ? "Checking for new notifications..."
+        : notificationQuery.isError
+          ? "Notifications are temporarily unavailable."
+          : unreadNotifications > 0
+            ? `${unreadNotifications} unread alert${unreadNotifications === 1 ? "" : "s"} need review.`
+            : "No new notifications.";
   const activePath = pendingHref ?? pathname;
-  const canOpenProvisioning = actor?.role === "platform_superadmin";
+  const canOpenProvisioning = isPlatformAdmin;
+  const showPlatformOverview = isPlatformAdmin && !pathname.startsWith("/settings/platform");
+  const headerTitle = !isPlatformAdmin && pathname.startsWith("/settings/platform")
+    ? "Access restricted"
+    : showPlatformOverview ? "Platform overview" : pageTitleFor(activePath);
 
   function handleNavigate(href: string, event: MouseEvent<HTMLAnchorElement>) {
     // Soft nav under our control so optimistic UI does not interrupt the transition.
@@ -201,6 +389,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     const prevPathname = prevPathnameRef.current;
     prevPathnameRef.current = pathname;
+    if (prevPathname !== pathname) {
+      setNotificationOpen(false);
+      setCompanyOpen(false);
+      setUserOpen(false);
+    }
     if (pendingHref == null) return;
     // Arrived at the optimistic target — drop overlay.
     if (pathname === pendingHref) {
@@ -213,17 +406,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [pathname, pendingHref]);
   useEffect(() => {
+    if (!showPlatformOverview) return;
+    router.replace("/settings/platform");
+  }, [router, showPlatformOverview]);
+  useEffect(() => {
     const hrefs = [
       ...navigation.map((item) => item.href),
       "/settings",
       "/settings/companies",
       "/settings/company-context",
+      "/settings/company-context/versions",
       "/settings/company-context/draft",
       "/settings/alert-preferences",
       "/settings/news-intake",
       "/settings/display-language",
       "/settings/platform",
+      "/settings/platform/health",
+      "/settings/platform/audit-log",
       "/settings/access",
+      "/settings/audit-log",
       "/saved",
     ];
     for (const href of hrefs) router.prefetch(href);
@@ -251,9 +452,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div><strong>EGI Media</strong><span>AI Intelligence</span></div>
           <button className="shell-icon-button sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><Icon name="close" /></button>
         </div>
-        <div className="sidebar-section-label">Workspace</div>
+        <div className="sidebar-section-label">{isPlatformAdmin ? "Platform" : "Workspace"}</div>
         <nav className="sidebar-nav">
-          {navigation.map((item) => {
+          {sidebarNavigation.map((item) => {
             const active = isNavActive(item.href, activePath);
             return (
               <SidebarLink
@@ -268,36 +469,63 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+        {isPlatformAdmin && (
+          <>
+            <div className="sidebar-section-label sidebar-section-label-secondary">Operations</div>
+            <div className="sidebar-nav" aria-label="Platform operations">
+              <SidebarLink
+                href="/settings/platform/health"
+                className={`sidebar-link ${activePath.startsWith("/settings/platform/health") ? "is-active" : ""}`}
+                onNavigate={handleNavigate}
+              >
+                <Icon name="activity" />
+                <span>System health</span>
+              </SidebarLink>
+              <SidebarLink
+                href="/settings/platform/audit-log"
+                className={`sidebar-link ${activePath.startsWith("/settings/platform/audit-log") ? "is-active" : ""}`}
+                onNavigate={handleNavigate}
+              >
+                <Icon name="shield" />
+                <span>Audit log</span>
+              </SidebarLink>
+            </div>
+          </>
+        )}
         <div className="sidebar-bottom">
-          <SidebarLink
-            href="/settings"
-            className={`sidebar-link ${activePath.startsWith("/settings") && !activePath.startsWith("/settings/platform") && !activePath.startsWith("/settings/access") ? "is-active" : ""}`}
-            onNavigate={handleNavigate}
-          >
-            <Icon name="settings" />
-            <span>Settings</span>
-          </SidebarLink>
-          {actor?.role === "platform_superadmin" && (
-            <SidebarLink
-              href="/settings/platform"
-              className={`sidebar-link ${activePath.startsWith("/settings/platform") ? "is-active" : ""}`}
-              onNavigate={handleNavigate}
-            >
-              <Icon name="building" />
-              <span>Provisioning</span>
-            </SidebarLink>
+          {!isPlatformAdmin && (
+            <>
+              <PermissionGate permission="tenant.companies.manage">
+                <SidebarLink
+                  href="/settings/companies"
+                  className={`sidebar-link ${activePath.startsWith("/settings/companies") ? "is-active" : ""}`}
+                  onNavigate={handleNavigate}
+                >
+                  <Icon name="building" />
+                  <span>Companies</span>
+                </SidebarLink>
+              </PermissionGate>
+              {(permissions.includes("tenant.users.manage") || permissions.includes("company.users.manage")) && (
+                <SidebarLink
+                  href="/settings/access"
+                  className={`sidebar-link ${activePath.startsWith("/settings/access") ? "is-active" : ""}`}
+                  onNavigate={handleNavigate}
+                >
+                  <Icon name="users" />
+                  <span>Access</span>
+                </SidebarLink>
+              )}
+              <SidebarLink
+                href="/settings"
+                className={`sidebar-link ${activePath.startsWith("/settings") && !activePath.startsWith("/settings/platform") && !activePath.startsWith("/settings/access") ? "is-active" : ""}`}
+                onNavigate={handleNavigate}
+              >
+                <Icon name="settings" />
+                <span>Settings</span>
+              </SidebarLink>
+            </>
           )}
-          <PermissionGate permission="tenant.users.manage">
-            <SidebarLink
-              href="/settings/access"
-              className={`sidebar-link ${activePath.startsWith("/settings/access") ? "is-active" : ""}`}
-              onNavigate={handleNavigate}
-            >
-              <Icon name="users" />
-              <span>Access</span>
-            </SidebarLink>
-          </PermissionGate>
-          <div className="sidebar-status"><span className="status-pulse" /> Intelligence engine ready</div>
+          <div className={`sidebar-status ${isPlatformAdmin ? "platform-sidebar-status" : intelligenceStatusTone}`}><span className="status-pulse" /> {isPlatformAdmin ? "Control plane ready" : intelligenceStatus}</div>
         </div>
       </aside>
 
@@ -305,9 +533,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="app-header">
           <div className="header-left">
             <button className="shell-icon-button mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Icon name="menu" /></button>
-            <h1 className="page-title">{pageTitleFor(activePath)}</h1>
+            <h1 className="page-title">{headerTitle}</h1>
+          {isPlatformAdmin ? (
+            <div className="platform-scope-chip" aria-label="Platform control plane">
+              <span className="platform-scope-icon"><Icon name="building" size={17} /></span>
+              <span><small>Control plane</small><strong>Workspace registry</strong></span>
+            </div>
+          ) : (
           <div className="company-switcher-wrap">
-            <button className="company-switcher" onClick={() => setCompanyOpen(!companyOpen)} aria-expanded={companyOpen} data-testid="company-switcher" data-has-company={hasCompany ? "true" : "false"}>
+            <button className="company-switcher" onClick={() => { setCompanyOpen((value) => !value); setNotificationOpen(false); setUserOpen(false); }} aria-expanded={companyOpen} data-testid="company-switcher" data-has-company={hasCompany ? "true" : "false"}>
               <span className="company-avatar">{switcherInitial}</span>
               <span><small>Company scope</small><strong>{switcherLabel}</strong></span><Icon name="chevron" size={15} />
             </button>
@@ -366,11 +600,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             )}
           </div>
+          )}
           </div>
-          <div className="header-actions">
-            <label className="global-search"><Icon name="search" size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search intelligence..." aria-label="Global search" /><kbd>⌘ K</kbd></label>
-            <div className="header-menu-wrap"><button className="shell-icon-button notification-button" onClick={() => setNotificationOpen(!notificationOpen)} aria-label="Notifications" aria-expanded={notificationOpen}><Icon name="bell" /><span /></button>{notificationOpen && <div className="shell-popover notification-popover"><strong>Notifications</strong><p>Your intelligence feed is ready for review.</p><SidebarLink href="/alerts" className="notification-popover-link" onNavigate={handleNavigate}>Open alerts <Icon name="arrow" size={14} /></SidebarLink></div>}</div>
-            <div className="header-menu-wrap"><button className="profile-button" onClick={() => setUserOpen(!userOpen)} aria-expanded={userOpen}><span className="profile-avatar">{profileInitial}</span><span className="profile-copy"><strong>{profileName}</strong><small>{profileRole}</small></span><Icon name="chevron" size={15} /></button>{userOpen && <div className="shell-popover user-popover"><button><Icon name="user" size={16} /> Profile</button><button type="button" onClick={() => {
+          <div className={`header-actions ${isPlatformAdmin ? "platform-header-actions" : ""}`}>
+            {!isPlatformAdmin && <GlobalSearch companyId={activeCompanyId} hasCompany={hasCompany} canReadIssues={permissions.includes("dashboard.read")} resetKey={pathname} onOpenIssue={openIssue} />}
+            <div className="header-menu-wrap"><button className="shell-icon-button notification-button" onClick={() => { setNotificationOpen((value) => !value); setCompanyOpen(false); setUserOpen(false); }} aria-label="Notifications" aria-expanded={notificationOpen}><Icon name="bell" />{unreadNotifications > 0 && <span aria-label={`${unreadNotifications} unread notifications`} />}</button>{notificationOpen && <div className="shell-popover notification-popover" role="dialog" aria-label="Notifications"><strong>Notifications</strong><p>{notificationMessage}</p>{canReadAlerts && hasCompany && <SidebarLink href="/alerts" className="notification-popover-link" onNavigate={handleNavigate}>Open alerts <Icon name="arrow" size={14} /></SidebarLink>}</div>}</div>
+            <div className="header-menu-wrap"><button className="profile-button" onClick={() => { setUserOpen((value) => !value); setCompanyOpen(false); setNotificationOpen(false); }} aria-expanded={userOpen}><span className="profile-avatar">{profileInitial}</span><span className="profile-copy"><strong>{profileName}</strong><small>{profileRole}</small></span><Icon name="chevron" size={15} /></button>{userOpen && <div className="shell-popover user-popover"><div className="user-popover-summary"><Icon name="user" size={16} /><span><strong>Account</strong><small>{profileRole}</small></span></div><button type="button" onClick={() => {
               setUserOpen(false);
               clearSession();
               // Hard navigate so we never linger on a protected route painting AuthGate.
@@ -383,7 +618,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="shell-page-enter">
             {pendingHref && hasOptimisticNavView(pendingHref) && pendingHref !== pathname
               ? <OptimisticNavView href={pendingHref} />
-              : children}
+              : showPlatformOverview ? <PlatformProvisioning /> : children}
           </div>
         </main>
       </div>

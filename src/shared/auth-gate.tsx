@@ -2,13 +2,13 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
-import { usePathname } from "@/i18n/navigation";
+import { Link, usePathname } from "@/i18n/navigation";
 import { useSessionStore } from "@/shared/session-store";
 import { StandardState } from "@/shared/ux-state";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import type { ApiSuccessResponse, AuthSessionDto, CompanyOptionDto } from "@/shared/types/api.types";
-import { mergeCompanyOptions, toCompanyOptionsFromLogin } from "@/shared/company-options";
+import { toCompanyOptionsFromLogin } from "@/shared/company-options";
 
 const PUBLIC_PATHS = new Set(["/login", "/signup"]);
 
@@ -38,7 +38,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isHydrated || hasError || accessToken) return;
     if (PUBLIC_PATHS.has(pathname)) return;
-    // Soft replace can stall; hard replace guarantees landing on login without the interstitial.
+    // Hard navigation is intentional here: a soft replace can stall after the
+    // session store is cleared and strand the user on a protected route.
     const locale = window.location.pathname.split("/").filter(Boolean)[0] || "id";
     window.location.replace(`${window.location.origin}/${locale}/login`);
   }, [accessToken, hasError, isHydrated, pathname]);
@@ -56,7 +57,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
         if (!active) return;
         const session = response.data.data;
         const fromSession = sessionCompanies(session);
-        const existing = useSessionStore.getState().authorizedCompanies;
         const existingPermissions = useSessionStore.getState().permissions;
         const nextPermissions = Array.isArray(session.permissions) && session.permissions.length > 0
           ? session.permissions
@@ -67,8 +67,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
           permissions: nextPermissions,
           tenantId: session.tenant_id,
           activeCompanyId: session.company_id,
-          // Preserve login-seeded tenant_id when session omits it.
-          authorizedCompanies: mergeCompanyOptions(fromSession, existing),
+          // The authenticated session is the authorization source of truth. Do
+          // not merge stale companies from a previous actor into this actor's
+          // scope after reload or account switching.
+          authorizedCompanies: fromSession,
         });
         setSessionReady(true);
       })
@@ -99,7 +101,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // Unauthenticated on a protected route: keep loading while the redirect effect
   // sends the user to /login. Never paint the unauthorized interstitial here —
   // it flashes on logout and cold loads before soft navigation settles.
-  if (!accessToken) return <StandardState kind="loading" message="Redirecting to sign in..." />;
+  if (!accessToken) return <StandardState kind="loading" message="Redirecting to sign in..."><Link className="context-action auth-redirect-link" href="/login">Go to sign in</Link></StandardState>;
   if (!sessionReady && permissions.length === 0) return <StandardState kind="loading" message="Loading your access..." />;
   return <>{children}</>;
 }

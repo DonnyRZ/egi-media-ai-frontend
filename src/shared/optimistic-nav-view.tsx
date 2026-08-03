@@ -11,9 +11,11 @@ const AlertsInbox = dynamic(() => import("@/shared/alerts-inbox").then((m) => m.
 const ReportsWorkspace = dynamic(() => import("@/shared/reports-workspace").then((m) => m.ReportsWorkspace), { ssr: false, loading: () => null });
 const SavedIssues = dynamic(() => import("@/shared/saved-issues").then((m) => m.SavedIssues), { ssr: false, loading: () => null });
 const PlatformProvisioning = dynamic(() => import("@/shared/platform-provisioning").then((m) => m.PlatformProvisioning), { ssr: false, loading: () => null });
+const TenantAuditLog = dynamic(() => import("@/shared/platform-audit-log").then((m) => m.TenantAuditLog), { ssr: false, loading: () => null });
 const AccessManagement = dynamic(() => import("@/shared/access-management").then((m) => m.AccessManagement), { ssr: false, loading: () => null });
 const TenantCompanyManagement = dynamic(() => import("@/shared/tenant-company-management").then((m) => m.TenantCompanyManagement), { ssr: false, loading: () => null });
 const CompanyContextRead = dynamic(() => import("@/shared/company-context-read").then((m) => m.CompanyContextRead), { ssr: false, loading: () => null });
+const CompanyContextVersions = dynamic(() => import("@/shared/company-context-versions").then((m) => m.CompanyContextVersions), { ssr: false, loading: () => null });
 const CompanyContextDraftFlow = dynamic(() => import("@/shared/company-context-draft-flow").then((m) => m.CompanyContextDraftFlow), { ssr: false, loading: () => null });
 const AlertPreferences = dynamic(() => import("@/shared/alert-preferences").then((m) => m.AlertPreferences), { ssr: false, loading: () => null });
 const NewsIntake = dynamic(() => import("@/shared/news-intake").then((m) => m.NewsIntake), { ssr: false, loading: () => null });
@@ -28,12 +30,14 @@ const VIEWS: Record<string, ComponentType> = {
   "/settings": SettingsHub,
   "/settings/companies": TenantCompanyManagement,
   "/settings/company-context": CompanyContextRead,
+  "/settings/company-context/versions": CompanyContextVersions,
   "/settings/company-context/draft": CompanyContextDraftFlow,
   "/settings/alert-preferences": AlertPreferences,
   "/settings/news-intake": NewsIntake,
   "/settings/display-language": DisplayLanguage,
   "/settings/platform": PlatformProvisioning,
   "/settings/access": AccessManagement,
+  "/settings/audit-log": TenantAuditLog,
 };
 
 /** Instant destination UI while Next soft-nav RSC catches up. */
@@ -54,9 +58,11 @@ export function prefetchOptimisticNavViews() {
   void import("@/shared/reports-workspace");
   void import("@/shared/saved-issues");
   void import("@/shared/platform-provisioning");
+  void import("@/shared/platform-audit-log");
   void import("@/shared/access-management");
   void import("@/shared/tenant-company-management");
   void import("@/shared/company-context-read");
+  void import("@/shared/company-context-versions");
   void import("@/shared/company-context-draft-flow");
   void import("@/shared/alert-preferences");
   void import("@/shared/news-intake");

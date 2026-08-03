@@ -108,6 +108,11 @@ export interface CompanyContextDto {
   management_identity?: ManagementIdentityDto | null;
 }
 
+export interface CompanyContextVersionListDto {
+  items: CompanyContextDto[];
+  meta: PaginationMeta;
+}
+
 export interface CompanyContextCompletenessDto {
   status: string;
   complete: boolean;

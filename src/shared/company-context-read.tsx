@@ -18,14 +18,6 @@ async function fetchCompanyContext(companyId: string) {
   return mapCompanyContext(response.data.data);
 }
 
-async function deleteCompanyContext(companyId: string) {
-  const response = await axiosClient.delete<ApiSuccessResponse<{ cleared: boolean; archived_version: number | null; company_id: string }>>(
-    API_ENDPOINTS.companyContext(companyId),
-    { headers: { "Idempotency-Key": `company-context-delete-${crypto.randomUUID()}` } },
-  );
-  return response.data.data;
-}
-
 async function retryManagementIdentity(companyId: string) {
   const response = await axiosClient.post<ApiSuccessResponse<{ management_identity: ManagementIdentityDto }>>(
     API_ENDPOINTS.companyContextIdentityRetry(companyId),
@@ -95,20 +87,8 @@ function CompanyContextBody({
 }) {
   const queryClient = useQueryClient();
   const canApprove = useSessionStore((state) => state.permissions.includes("company_context.approve"));
+  const canDraft = useSessionStore((state) => state.permissions.includes("company_context.draft"));
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteCompanyContext(companyId),
-    onSuccess: () => {
-      setConfirmDelete(false);
-      setNotice({ kind: "success", text: "Effective company context removed. News intake is blocked until a new context is approved." });
-      void queryClient.invalidateQueries({ queryKey: ["company-context", companyId] });
-      void queryClient.invalidateQueries({ queryKey: ["news-intake-status", companyId] });
-    },
-    onError: (err) => setNotice({ kind: "error", text: getApiError(err).message }),
-  });
-
   const retryIdentityMutation = useMutation({
     mutationFn: () => retryManagementIdentity(companyId),
     onSuccess: (identity) => {
@@ -128,7 +108,14 @@ function CompanyContextBody({
   if (isLoading) return <ContextLoading />;
   if (isError) {
     const apiError = getApiError(error);
-    if (apiError.code === "NOT_FOUND") return <ContextState eyebrow="Not found" title="No effective context yet" message="This company does not have an approved effective context." action="Start context setup" />;
+    if (apiError.code === "NOT_FOUND") {
+      const message = canApprove
+        ? "Create and approve a context before this workspace can rank leadership-relevant signals."
+        : canDraft
+          ? "Create a context draft and submit it for approval before this workspace can rank leadership-relevant signals."
+          : "No approved context is available for this company yet. Ask a company administrator to set it up.";
+      return <ContextState eyebrow="Company intelligence" title="No approved context yet" message={message} action={canDraft || canApprove ? "Create context" : undefined} />;
+    }
     if (apiError.code === "UNAUTHORIZED" || apiError.code === "FORBIDDEN") return <ContextState eyebrow="Access restricted" title="You cannot view this context" message="Your current session is not authorized for this company scope." />;
     if (apiError.code === "VERSION_CONFLICT") return <ContextState eyebrow="Stale version" title="This context needs to be refreshed" message="The context version changed while this workspace was open. Reload before continuing." action="Reload context" onAction={onRetry} />;
     return <ContextState eyebrow="Could not load" title="Company context is temporarily unavailable" message={apiError.message} action="Try again" onAction={onRetry} />;
@@ -142,12 +129,11 @@ function CompanyContextBody({
   const identityStatus = context.managementIdentity?.status ?? "missing";
   const identityReady = identityStatus === "ready";
   const identityFailed = identityStatus === "failed";
-  const busy = deleteMutation.isPending || retryIdentityMutation.isPending;
+  const busy = retryIdentityMutation.isPending;
 
   return (
     <div className="context-page" data-testid="company-context-read">
       <div className="context-page-heading">
-        <p>The approved context currently guiding relevance and issue analysis.</p>
         <span className="context-status-badge">{context.status}</span>
       </div>
 
@@ -159,21 +145,18 @@ function CompanyContextBody({
               {identityStatus}
             </span>
           </h2>
-          <p>
-            {identityReady
-              ? "Ready for news intake and judgmental AI tasks."
-              : identityFailed
+          {!identityReady && (
+            <p>
+              {identityFailed
                 ? context.managementIdentity?.errorMessage ||
                   "Identity draft failed. Retry identity, or revise company context and approve again."
                 : "News intake is blocked until management identity is ready for this context version."}
-          </p>
-          {context.managementIdentity?.lensSummary ? (
-            <p className="context-identity-lens">{context.managementIdentity.lensSummary}</p>
-          ) : null}
+            </p>
+          )}
         </div>
-        {canApprove && (
+        {(canApprove || canDraft) && (
           <div className="context-lifecycle-actions">
-            {(identityFailed || identityStatus === "missing" || identityStatus === "pending") && (
+            {canApprove && (identityFailed || identityStatus === "missing" || identityStatus === "pending") && (
               <button
                 type="button"
                 className="context-action"
@@ -187,43 +170,14 @@ function CompanyContextBody({
                 {retryIdentityMutation.isPending ? "Retrying identity…" : "Retry identity"}
               </button>
             )}
-            <Link className="context-action context-action-secondary" href="/settings/company-context/draft" data-testid="company-context-revise">
-              Revise
-            </Link>
-            {!confirmDelete ? (
-              <button
-                type="button"
-                className="context-action context-action-danger"
-                data-testid="company-context-delete"
-                disabled={busy}
-                onClick={() => {
-                  setNotice(null);
-                  setConfirmDelete(true);
-                }}
-              >
-                Hapus context
-              </button>
-            ) : (
-              <div className="context-delete-confirm" data-testid="company-context-delete-confirm">
-                <p>Remove the effective context? Intake stays blocked until you set up a new one.</p>
-                <button
-                  type="button"
-                  className="context-action context-action-danger"
-                  disabled={busy}
-                  onClick={() => deleteMutation.mutate()}
-                >
-                  {deleteMutation.isPending ? "Removing…" : "Confirm delete"}
-                </button>
-                <button
-                  type="button"
-                  className="context-action context-action-secondary"
-                  disabled={busy}
-                  onClick={() => setConfirmDelete(false)}
-                >
-                  Cancel
-                </button>
-              </div>
+            {canDraft && (
+              <Link className="context-action context-action-secondary" href="/settings/company-context/draft" data-testid="company-context-revise">
+                Revise
+              </Link>
             )}
+            <Link className="context-action context-action-secondary" href="/settings/company-context/versions" data-testid="company-context-manage-versions">
+              Manage versions
+            </Link>
           </div>
         )}
       </section>
@@ -248,7 +202,6 @@ function CompanyContextBody({
       </section>
       <div className="context-meta-grid">
         <ContextMeta label="Status" value={context.status} />
-        <ContextMeta label="Company ID" value={context.companyId || companyId} mono />
         <ContextMeta label="Last updated" value={updated} />
         <ContextMeta label="Updated by" value={context.updatedBy ?? "Not available"} />
       </div>
@@ -256,9 +209,8 @@ function CompanyContextBody({
         <div className="context-section-heading">
           <div>
             <span className="context-label">Context fields</span>
-            <h2>What the system knows</h2>
           </div>
-          <span className="context-read-only">Read-only effective version</span>
+          <span className="context-read-only">Read-only</span>
         </div>
         <div className="context-fields">
           {Object.entries(context.fields)

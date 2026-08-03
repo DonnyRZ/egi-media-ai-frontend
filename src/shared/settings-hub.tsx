@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { useScopeBlockGuidance } from "@/shared/scope-block-guidance";
+import { useSessionStore } from "@/shared/session-store";
 import { SoftNavLink } from "@/shared/soft-nav";
 import type { ScopePrerequisite } from "@/shared/workspace-scope";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
@@ -11,6 +12,7 @@ type HubCard = {
   href: string;
   title: string;
   description: string;
+  permission?: string;
   requireTenant?: boolean;
   requireCompany?: boolean;
 };
@@ -25,36 +27,42 @@ const CARDS: HubCard[] = [
     href: "/settings/companies",
     title: "Companies",
     description: "Manage companies within this tenant.",
+    permission: "tenant.companies.manage",
     requireTenant: true,
   },
   {
-    href: "/settings/company-context",
-    title: "Company Context",
-    description: "View the effective approved context.",
-    requireCompany: true,
+    href: "/settings/audit-log",
+    title: "Audit log",
+    description: "Review access decisions and workspace actions.",
+    permission: "audit.read",
+    requireTenant: true,
   },
   {
-    href: "/settings/company-context/draft",
-    title: "Context draft flow",
-    description: "Generate a draft and save to activate company context.",
+    href: "/settings/company-context/versions",
+    title: "Company Context",
+    description: "Review context versions and the active company lens.",
+    permission: "company_context.read",
     requireCompany: true,
   },
   {
     href: "/settings/alert-preferences",
     title: "Alert preferences",
     description: "Configure high alerts, digest, quiet hours, and timezone.",
+    permission: "alert.preference.manage",
     requireCompany: true,
   },
   {
     href: "/settings/news-intake",
     title: "News intake",
     description: "Automatic and manual article intake for issues.",
+    permission: "news.intake.read",
     requireCompany: true,
   },
   {
     href: "/settings/display-language",
     title: "Display language",
     description: "Choose Bahasa Indonesia or English for newly generated AI output.",
+    permission: "company.language.manage",
     requireCompany: true,
   },
 ];
@@ -223,15 +231,14 @@ function HubCardControl({
 
 export function SettingsHub() {
   const scope = useWorkspaceScope();
+  const permissions = useSessionStore((state) => state.permissions);
   const [block, setBlock] = useState<{ card: HubCard; missing: ScopePrerequisite } | null>(null);
+  const visibleCards = CARDS.filter((card) => !card.permission || permissions.includes(card.permission));
 
   return (
     <div className="settings-hub">
-      <div className="page-context">
-        <span className="supporting-text">Manage the company intelligence context and alert evaluation preferences.</span>
-      </div>
       <div className="settings-hub-grid">
-        {CARDS.map((card) => (
+        {visibleCards.map((card) => (
           <HubCardControl
             key={card.href}
             card={card}

@@ -42,7 +42,19 @@ test("news feed channel registry matches locked F0 order (19 tabs)", () => {
   assert.equal(order.length, 19);
 });
 
+test("News Feed does not expose the unimplemented viral provider", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/shared/news-feed-channels.ts"), "utf8");
+  assert.match(source, /VISIBLE_NEWS_FEED_CHANNELS/);
+  assert.match(source, /channel\.id !== "viral"/);
+});
+
 test("external intake media excludes viral and egi_media (17 outlets)", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/shared/news-feed-channels.ts"), "utf8");
   assert.match(source, /channel\.id !== "viral" && channel\.id !== "egi_media"/);
+});
+
+test("settings hub aligns visible cards with role permissions", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "src/shared/settings-hub.tsx"), "utf8");
+  assert.match(source, /permission: "tenant\.companies\.manage"/);
+  assert.match(source, /const visibleCards = CARDS\.filter\(\(card\) => !card\.permission \|\| permissions\.includes\(card\.permission\)\)/);
 });

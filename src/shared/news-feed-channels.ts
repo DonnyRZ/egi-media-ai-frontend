@@ -53,6 +53,11 @@ export const NEWS_FEED_CHANNELS: readonly NewsFeedChannel[] = Object.freeze([
   { id: "tribunnews", label: "Tribunnews", layout: "card" },
 ]);
 
+/** Only expose providers with a working read contract in the workspace UI. */
+export const VISIBLE_NEWS_FEED_CHANNELS: readonly NewsFeedChannel[] = Object.freeze(
+  NEWS_FEED_CHANNELS.filter((channel) => channel.id !== "viral"),
+);
+
 export function isNewsFeedChannelId(value: string): value is NewsFeedChannelId {
   return NEWS_FEED_CHANNELS.some((channel) => channel.id === value);
 }

@@ -2,7 +2,7 @@
 
 import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Check } from "lucide-react";
 
 import {
@@ -13,6 +13,7 @@ import {
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
+import { PermissionGate } from "@/shared/permission-guard";
 import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import type { ApiSuccessResponse, CompanyContextCompletenessDto, CompanyContextDto, LanguagePreferenceDto } from "@/shared/types/api.types";
@@ -124,7 +125,19 @@ export function CompanyContextDraftFlow() {
       reason="Context drafts are scoped to an active company. Select a company before generating or reviewing a draft."
       nextStep="Pick a company in the header switcher. If none exist, provision one under Platform, then return here."
     >
-      <CompanyContextDraftFlowBody />
+      <PermissionGate
+        permission="company_context.draft"
+        fallback={
+          <div className="context-state">
+            <div className="context-state-mark">i</div>
+            <div className="eyebrow">Access restricted</div>
+            <h1>Context draft access required</h1>
+            <p>Your role can view the approved context but cannot create or edit a draft.</p>
+          </div>
+        }
+      >
+        <CompanyContextDraftFlowBody />
+      </PermissionGate>
     </ScopeRequired>
   );
 }
@@ -135,13 +148,17 @@ function CompanyContextDraftFlowBody() {
   const canDraft = useSessionStore((state) => state.permissions.includes("company_context.draft"));
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<SourceMode>("pdf");
-  const [sourceValue, setSourceValue] = useState("");
+  // Keep each source mode's draft input independent. Switching from Text to
+  // URL must never make arbitrary prose look like a valid URL; preserving the
+  // value per mode also lets a user move between tabs without losing work.
+  const [sourceValues, setSourceValues] = useState<{ url: string; text: string }>({ url: "", text: "" });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [fields, setFields] = useState<Record<string, unknown>>({});
   const [fieldReview, setFieldReview] = useState<Record<string, string>>({});
   const [saveNote, setSaveNote] = useState("");
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
   const [identityStatus, setIdentityStatus] = useState<string | null>(null);
   const languageQuery = useQuery({
     queryKey: ["language-preference", companyId],
@@ -156,6 +173,7 @@ function CompanyContextDraftFlowBody() {
     retry: false,
   });
   const extractionLanguage = resolveCompanyLanguage(languageQuery.data?.language ?? DEFAULT_COMPANY_LANGUAGE);
+  const sourceValue = mode === "url" ? sourceValues.url : mode === "text" ? sourceValues.text : "";
   const draftQuery = useQuery({
     queryKey: ["company-context-draft", draft?.draft_id],
     queryFn: () => readDraft(draft!.draft_id),
@@ -186,7 +204,9 @@ function CompanyContextDraftFlowBody() {
       queryClient.setQueryData(["company-context-draft", data.draft_id], data);
       setNotice({
         kind: "success",
-        text: canApprove
+        text: data.status === "approved"
+          ? "Context is active."
+          : canApprove
           ? "Draft generated. Edit fields if needed, then Save to make this context active."
           : "Draft generated. Edit and save the draft. Activation requires a role with approve permission.",
       });
@@ -264,6 +284,10 @@ function CompanyContextDraftFlowBody() {
     identityStatus ??
     effectiveQuery.data?.management_identity?.status ??
     null;
+  useEffect(() => {
+    if (notice?.kind !== "error") return;
+    requestAnimationFrame(() => noticeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  }, [notice]);
   const canGenerate =
     Boolean(companyId) && !isBusy && (mode === "pdf" ? Boolean(selectedFile) : Boolean(sourceValue.trim()));
   const isEditable = shownDraft && (shownDraft.status === "draft" || shownDraft.status === "in_review");
@@ -286,6 +310,19 @@ function CompanyContextDraftFlowBody() {
     setFields((current) => ({ ...current, [keyName]: Array.isArray(current[keyName]) ? [] : null }));
     setFieldReview((current) => ({ ...current, [keyName]: "reviewed_none_disclosed" }));
   }
+  function updateSourceValue(value: string) {
+    if (mode === "pdf") return;
+    setSourceValues((current) => ({ ...current, [mode]: value }));
+  }
+  function handleSourceTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+    event.preventDefault();
+    const currentIndex = SOURCE_MODES.indexOf(mode);
+    const nextIndex = event.key === "ArrowRight"
+      ? (currentIndex + 1) % SOURCE_MODES.length
+      : (currentIndex - 1 + SOURCE_MODES.length) % SOURCE_MODES.length;
+    setMode(SOURCE_MODES[nextIndex]);
+  }
   function refreshDraft() {
     draftQuery.refetch().then((result) => {
       if (result.data) {
@@ -299,9 +336,11 @@ function CompanyContextDraftFlowBody() {
     mode === "pdf" ? (
       <>
         <input
+          key="company-profile-pdf-input"
           className="context-flow-input"
           type="file"
           accept="application/pdf,.pdf"
+          aria-label="Company profile PDF"
           onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
         />
         <small className="context-flow-helper">
@@ -317,18 +356,22 @@ function CompanyContextDraftFlowBody() {
     ) : mode === "url" ? (
       <>
         <input
+          key="company-profile-url-input"
           className="context-flow-input"
           value={sourceValue}
-          onChange={(event) => setSourceValue(event.target.value)}
+          aria-label="Company profile URL"
+          onChange={(event) => updateSourceValue(event.target.value)}
           placeholder="https://company.example/about"
         />
         <small className="context-flow-helper">The backend will fetch and sanitize the URL.</small>
       </>
     ) : (
       <textarea
+        key="company-profile-text-input"
         className="context-flow-textarea"
         value={sourceValue}
-        onChange={(event) => setSourceValue(event.target.value)}
+        aria-label="Company profile source text"
+        onChange={(event) => updateSourceValue(event.target.value)}
         placeholder="Paste the approved company context source text here..."
       />
     );
@@ -353,18 +396,20 @@ function CompanyContextDraftFlowBody() {
             <h2>Where should the draft come from?</h2>
           </div>
         </div>
-        <div className="source-mode-tabs">
-          <button className={mode === "pdf" ? "is-active" : ""} onClick={() => setMode("pdf")}>
+        <div className="source-mode-tabs" role="tablist" aria-label="Company profile source">
+          <button id="company-profile-tab-pdf" type="button" role="tab" aria-controls="company-profile-source-panel" aria-selected={mode === "pdf"} tabIndex={mode === "pdf" ? 0 : -1} className={mode === "pdf" ? "is-active" : ""} onClick={() => setMode("pdf")} onKeyDown={handleSourceTabKeyDown}>
             Company PDF
           </button>
-          <button className={mode === "url" ? "is-active" : ""} onClick={() => setMode("url")}>
+          <button id="company-profile-tab-url" type="button" role="tab" aria-controls="company-profile-source-panel" aria-selected={mode === "url"} tabIndex={mode === "url" ? 0 : -1} className={mode === "url" ? "is-active" : ""} onClick={() => setMode("url")} onKeyDown={handleSourceTabKeyDown}>
             URL
           </button>
-          <button className={mode === "text" ? "is-active" : ""} onClick={() => setMode("text")}>
+          <button id="company-profile-tab-text" type="button" role="tab" aria-controls="company-profile-source-panel" aria-selected={mode === "text"} tabIndex={mode === "text" ? 0 : -1} className={mode === "text" ? "is-active" : ""} onClick={() => setMode("text")} onKeyDown={handleSourceTabKeyDown}>
             Text fallback
           </button>
         </div>
-        {sourceInput}
+        <div id="company-profile-source-panel" role="tabpanel" aria-labelledby={`company-profile-tab-${mode}`}>
+          {sourceInput}
+        </div>
         <small className="context-flow-helper" data-testid="context-draft-language-note">
           Existing drafts are not retranslated when you change Display language. Only newly generated drafts use the current preference.
         </small>
@@ -404,9 +449,9 @@ function CompanyContextDraftFlowBody() {
                 : shownDraft.status === "approved"
                   ? "This draft has been activated as the effective company context."
                   : "Pipeline output is ready. Edit fields, then Save."}
-              <button onClick={refreshDraft}>Refresh</button>
+              <button type="button" onClick={refreshDraft}>Refresh</button>
             </div>
-            {!coreComplete && (
+            {isEditable && !coreComplete && (
               <div className="context-missing-fields" role="status" data-testid="context-completeness">
                 <span>Review required before activation</span>
                 <div>
@@ -418,26 +463,31 @@ function CompanyContextDraftFlowBody() {
             <div className="context-edit-grid">
               {Object.entries(fields).map(([keyName, value]) => (
                 <label className="context-edit-field" key={keyName}>
-                  <span>{humanize(keyName)} <small className={`context-review-status status-${fieldReview[keyName] || "missing"}`}>{humanize(fieldReview[keyName] || "missing")}</small></span>
+                  <span>
+                    {humanize(keyName)}
+                    {isEditable && <small className={`context-review-status status-${fieldReview[keyName] || "missing"}`}>{humanize(fieldReview[keyName] || "missing")}</small>}
+                  </span>
                   {Array.isArray(value) ? (
                     <textarea
                       value={value.join("\n")}
+                      aria-label={`${humanize(keyName)} field`}
                       onChange={(event) => updateField(keyName, event.target.value)}
                       disabled={!isEditable || isBusy}
                     />
                   ) : (
                     <textarea
                       value={String(value ?? "")}
+                      aria-label={`${humanize(keyName)} field`}
                       onChange={(event) => updateField(keyName, event.target.value)}
                       disabled={!isEditable || isBusy}
                     />
                   )}
-                  {fieldReview[keyName] === "ai_proposed" && (
+                  {isEditable && fieldReview[keyName] === "ai_proposed" && (
                     <button type="button" className="context-review-button" onClick={() => confirmField(keyName)} disabled={isBusy}>
                       Confirm AI proposal
                     </button>
                   )}
-                  {AI_REVIEW_CONTEXT_FIELDS.includes(keyName as (typeof AI_REVIEW_CONTEXT_FIELDS)[number]) && fieldReview[keyName] !== "reviewed_none_disclosed" && (
+                  {isEditable && AI_REVIEW_CONTEXT_FIELDS.includes(keyName as (typeof AI_REVIEW_CONTEXT_FIELDS)[number]) && fieldReview[keyName] !== "reviewed_none_disclosed" && (
                     <button type="button" className="context-review-button secondary" onClick={() => markNotDisclosed(keyName)} disabled={isBusy}>
                       Mark not disclosed
                     </button>
@@ -507,7 +557,7 @@ function CompanyContextDraftFlowBody() {
         </section>
       )}
       {notice && (
-        <div className={`preference-notice ${notice.kind}`} role="status">
+        <div ref={noticeRef} className={`preference-notice ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
           {notice.text}
         </div>
       )}
@@ -529,6 +579,7 @@ function humanize(value: string) {
 }
 const REQUIRED_CONTEXT_FIELDS = ["name", "industry", "description", "products", "customers", "regions", "priorities"] as const;
 const AI_REVIEW_CONTEXT_FIELDS = ["sub_industry", "competitors", "goals", "risks", "topics", "dependencies"] as const;
+const SOURCE_MODES: SourceMode[] = ["pdf", "url", "text"];
 function hasFieldValue(value: unknown) { return Array.isArray(value) ? value.length > 0 : typeof value === "string" && value.trim().length > 0; }
 function reviewBlockingFields(fields: Record<string, unknown>, review: Record<string, string>) {
   return [...REQUIRED_CONTEXT_FIELDS, ...AI_REVIEW_CONTEXT_FIELDS].filter((field) => {

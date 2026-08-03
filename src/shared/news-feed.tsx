@@ -10,13 +10,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Inbox, Newspaper, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Inbox, Newspaper, Search } from "lucide-react";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import {
   DEFAULT_NEWS_FEED_CHANNEL,
   NEWS_FEED_CHANNELS,
+  VISIBLE_NEWS_FEED_CHANNELS,
   type NewsFeedChannelId,
 } from "@/shared/news-feed-channels";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
@@ -70,9 +71,9 @@ function NewsFeedBody() {
   const layout = query.data?.layout ?? activeMeta.layout;
   const label = query.data?.label ?? activeMeta.label;
   const items = filterItems(query.data?.items ?? [], deferredSearch);
-  const isComingSoon =
+  const isUnavailable =
     query.data?.availability === "coming_soon" ||
-    (channel === "viral" && query.data && query.data.items.length === 0 && Boolean(query.data.message));
+    query.data?.availability === "unavailable";
 
   function selectChannel(next: NewsFeedChannelId) {
     if (next === channel) return;
@@ -110,11 +111,11 @@ function NewsFeedBody() {
         <NewsFeedLoading layout={layout} />
       ) : query.isError ? (
         <NewsFeedError error={query.error} onRetry={() => query.refetch()} />
-      ) : isComingSoon ? (
+      ) : isUnavailable ? (
         <StandardState
-          kind="empty"
-          title="Coming soon"
-          message={query.data?.message || "Viral coverage will appear here when X integration is ready."}
+          kind="provider"
+          title="Source unavailable"
+          message="This source is not available in the workspace right now. No stories were added."
         />
       ) : items.length === 0 ? (
         <NewsFeedEmpty filtered={Boolean(deferredSearch)} onReset={() => setSearch("")} channelLabel={label} />
@@ -204,7 +205,7 @@ function NewsFeedChannelTabs({
         </button>
       ) : null}
       <div ref={trackRef} className="news-feed-tabs-track">
-        {NEWS_FEED_CHANNELS.map((entry) => (
+      {VISIBLE_NEWS_FEED_CHANNELS.map((entry) => (
           <button
             key={entry.id}
             type="button"

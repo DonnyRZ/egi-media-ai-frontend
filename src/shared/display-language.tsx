@@ -10,10 +10,13 @@ import {
   type CompanyLanguage,
 } from "@/shared/company-language";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
+import { activeCompanyLabel } from "@/shared/company-options";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
+import { PermissionGate } from "@/shared/permission-guard";
 import { useSessionStore } from "@/shared/session-store";
 import type { ApiSuccessResponse, LanguagePreferenceDto } from "@/shared/types/api.types";
+import { StandardState } from "@/shared/ux-state";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 
 function createIdempotencyKey() {
@@ -47,7 +50,12 @@ export function DisplayLanguage() {
       reason="Display language preference is scoped to an active company. Select a company before choosing the language for newly generated AI output."
       nextStep="Pick a company in the header switcher. If none exist, provision one under Platform, then return here."
     >
-      <DisplayLanguageBody />
+      <PermissionGate
+        permission="company.language.manage"
+        fallback={<StandardState kind="forbidden" title="Display language restricted" message="Your role cannot change the language used for newly generated AI output." />}
+      >
+        <DisplayLanguageBody />
+      </PermissionGate>
     </ScopeRequired>
   );
 }
@@ -55,6 +63,7 @@ export function DisplayLanguage() {
 function DisplayLanguageBody() {
   const companyId = useSessionStore((state) => state.activeCompanyId);
   const actor = useSessionStore((state) => state.actor);
+  const authorizedCompanies = useSessionStore((state) => state.authorizedCompanies);
   const queryClient = useQueryClient();
   const [language, setLanguage] = useState<CompanyLanguage>(DEFAULT_COMPANY_LANGUAGE);
   const [confirmed, setConfirmed] = useState<CompanyLanguage | null>(null);
@@ -118,7 +127,7 @@ function DisplayLanguageBody() {
       </div>
       <div className="preference-scope">
         <span>Company scope</span>
-        <strong>{companyId}</strong>
+        <strong>{activeCompanyLabel(authorizedCompanies, companyId)}</strong>
         <small>{actor?.email ?? "Current authenticated actor"}</small>
       </div>
       {loadFailed && (

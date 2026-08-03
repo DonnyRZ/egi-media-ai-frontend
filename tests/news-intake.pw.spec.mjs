@@ -260,7 +260,7 @@ test.describe("News intake settings (mock)", () => {
     await expect(page.getByTestId("news-intake-runs-next")).toBeEnabled();
     await page.getByTestId("news-intake-runs-next").click();
     await expect(page.getByTestId("news-intake-runs-page-label")).toHaveText("Page 2");
-    await expect(page.getByText("queued")).toBeVisible();
+    await expect(page.getByRole("cell", { name: "queued" })).toBeVisible();
     await expect(page.getByTestId("news-intake-runs-next")).toBeDisabled();
     await page.getByTestId("news-intake-runs-prev").click();
     await expect(page.getByTestId("news-intake-runs-page-label")).toHaveText("Page 1");

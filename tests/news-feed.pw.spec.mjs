@@ -38,7 +38,7 @@ async function seedSession(page) {
   });
 }
 
-async function mockAuthAndFeed(page, onFeedRequest) {
+async function mockAuthAndFeed(page, onFeedRequest, unavailableChannel = null) {
   await page.route("**/api/v1/auth/session", async (route) =>
     route.fulfill({
       status: 200,
@@ -72,22 +72,13 @@ async function mockAuthAndFeed(page, onFeedRequest) {
     const url = new URL(route.request().url());
     const channel = url.searchParams.get("channel") || "egi_media";
     onFeedRequest?.(channel, url);
-    if (channel === "viral") {
+    if (channel === unavailableChannel) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           success: true,
-          data: {
-            channel: "viral",
-            label: "Viral",
-            layout: "text",
-            provider: "viral_x",
-            items: [],
-            next_cursor: null,
-            availability: "coming_soon",
-            message: "Coming soon",
-          },
+          data: { channel, label: channel === "detik" ? "Detik" : channel, layout: "card", provider: "crawl", items: [], next_cursor: null, availability: "unavailable" },
           meta: { request_id: "nf" },
         }),
       });
@@ -120,7 +111,7 @@ async function mockAuthAndFeed(page, onFeedRequest) {
 }
 
 test.describe("news feed channel strip", () => {
-  test("defaults to egi_media, switches channel, viral coming soon, card with thumb", async ({ page }) => {
+  test("defaults to egi_media and switches across visible channels", async ({ page }) => {
     const requested = [];
     await seedSession(page);
     await mockAuthAndFeed(page, (channel) => requested.push(channel));
@@ -129,10 +120,10 @@ test.describe("news feed channel strip", () => {
     await expect(page.getByRole("heading", { name: "News Feed" })).toBeVisible();
 
     const tabs = page.locator('[data-testid="news-feed-tabs"] button[data-channel]');
-    await expect(tabs).toHaveCount(19);
-    await expect(tabs.first()).toHaveAttribute("data-channel", "viral");
-    await expect(tabs.nth(1)).toHaveAttribute("data-channel", "egi_media");
+    await expect(tabs).toHaveCount(18);
+    await expect(tabs.first()).toHaveAttribute("data-channel", "egi_media");
     await expect(tabs.last()).toHaveAttribute("data-channel", "tribunnews");
+    await expect(page.locator('[data-testid="news-feed-tabs"] button[data-channel="viral"]')).toHaveCount(0);
 
     const egiTab = page.locator('[data-testid="news-feed-tabs"] button[data-channel="egi_media"]');
     await expect(egiTab).toHaveAttribute("aria-pressed", "true");
@@ -145,10 +136,16 @@ test.describe("news feed channel strip", () => {
     await page.locator('[data-testid="news-feed-tabs"] button[data-channel="detik"]').click();
     await expect.poll(() => requested.at(-1)).toBe("detik");
     await expect(page.getByRole("heading", { name: "Detik story" })).toBeVisible();
+    await expect(page).toHaveScreenshot("news-feed-detik.png", { fullPage: true });
+  });
 
-    await page.locator('[data-testid="news-feed-tabs"] button[data-channel="viral"]').click();
-    await expect.poll(() => requested.at(-1)).toBe("viral");
-    await expect(page.getByRole("heading", { name: "Coming soon" })).toBeVisible();
-    await expect(page.getByText(/Viral coverage will appear here|Coming soon/i).first()).toBeVisible();
+  test("reports an unavailable provider without placeholder marketing copy", async ({ page }) => {
+    await seedSession(page);
+    await mockAuthAndFeed(page, undefined, "detik");
+    await page.goto("/id/issues");
+    await page.locator('[data-testid="news-feed-tabs"] button[data-channel="detik"]').click();
+    await expect(page.getByRole("heading", { name: "Source unavailable" })).toBeVisible();
+    await expect(page.getByText(/Coming soon/i)).toHaveCount(0);
+    await expect(page).toHaveScreenshot("news-feed-source-unavailable.png", { fullPage: true });
   });
 });

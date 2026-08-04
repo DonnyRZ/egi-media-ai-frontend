@@ -1653,6 +1653,51 @@
   .platform-modal-actions .platform-primary-button, .platform-modal-actions .platform-secondary-button { min-width: 0; width: 100%; }
 }
 
+/* Scalable workspace registry controls. */
+.platform-tenant-row { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto minmax(112px, auto) auto auto; }
+.platform-registry-controls { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 16px 0; }
+.platform-search-field { display: grid; flex: 1; gap: 6px; max-width: 520px; }
+.platform-search-field span { color: #34425a; font-size: 11px; font-weight: 800; }
+.platform-search-field input { min-height: 42px; border: 1px solid #d6dee9; border-radius: 10px; padding: 0 13px; background: #fff; color: #152039; font: inherit; font-size: 13px; }
+.platform-search-field input:focus { outline: 3px solid rgb(40 100 223 / 14%); border-color: #6d99e8; }
+.platform-results-summary { color: #8190a5; font-size: 11px; white-space: nowrap; }
+.platform-tenant-checkbox, .platform-page-selection input { width: 17px; height: 17px; accent-color: #2864df; }
+.platform-row-actions { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.platform-row-more { display: inline-grid; place-items: center; width: 36px; height: 36px; border: 1px solid #dbe2eb; border-radius: 10px; background: #fff; color: #50617b; font: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
+.platform-row-more:hover, .platform-row-more[aria-expanded="true"] { border-color: #89a9e0; background: #f5f9ff; color: #285dbb; }
+.platform-row-menu { position: absolute; z-index: 10; top: calc(100% + 7px); right: 0; display: grid; min-width: 180px; padding: 5px; border: 1px solid #dfe5ed; border-radius: 12px; background: #fff; box-shadow: 0 16px 38px rgb(21 32 57 / 16%); }
+.platform-row-menu button { border: 0; border-radius: 8px; padding: 10px 11px; background: transparent; color: #263858; font: inherit; font-size: 12px; font-weight: 750; text-align: left; cursor: pointer; }
+.platform-row-menu button:hover { background: #f5f8ff; color: #285dbb; }
+.platform-row-menu button.is-danger { color: #a62b20; }
+.platform-row-menu button.is-danger:hover { background: #fff6f4; color: #8e2118; }
+.platform-page-selection { display: flex; align-items: center; gap: 9px; margin: 12px 0 9px; color: #34425a; font-size: 12px; font-weight: 750; }
+.platform-page-selection small { color: #8995a7; font-size: 11px; font-weight: 500; }
+.platform-bulk-bar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 13px 0 9px; border: 1px solid #efc8c2; border-radius: 13px; padding: 13px 14px; background: #fff8f6; }
+.platform-bulk-bar > div { display: grid; gap: 3px; }
+.platform-bulk-bar strong { color: #8f2e24; font-size: 12px; }
+.platform-bulk-bar span { color: #95635d; font-size: 11px; line-height: 1.4; }
+.platform-danger-button { border: 1px solid #edc5bf; border-radius: 10px; padding: 10px 13px; background: #fff; color: #a62b20; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.platform-danger-button:hover { border-color: #d7786c; background: #fff0ed; color: #8e2118; }
+.platform-select-all-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 9px; border: 1px solid #cbdcf8; border-radius: 10px; padding: 9px 11px; background: #f5f9ff; color: #526681; font-size: 11px; }
+.platform-select-all-banner button { border: 0; background: transparent; color: #285dbb; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.platform-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; color: #71809a; font-size: 11px; }
+.platform-pagination > div { display: flex; gap: 7px; }
+.platform-pagination .platform-secondary-button { padding: 9px 11px; font-size: 11px; }
+@media (max-width: 720px) {
+  .platform-registry-controls { align-items: stretch; flex-direction: column; }
+  .platform-search-field { max-width: none; }
+  .platform-results-summary { white-space: normal; }
+  .platform-tenant-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .platform-tenant-updated, .platform-selected-marker { display: none; }
+  .platform-row-actions { grid-column: 3; grid-row: 1 / span 2; }
+  .platform-row-actions .platform-row-action { max-width: 126px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .platform-bulk-bar, .platform-select-all-banner { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 520px) {
+  .platform-row-more { width: 34px; }
+  .platform-pagination { align-items: flex-start; flex-direction: column; }
+}
+
 /* Tenant company registry. */
 .company-admin-page { max-width: var(--content-max); width: 100%; min-width: 0; }
 .company-admin-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--color-border); }

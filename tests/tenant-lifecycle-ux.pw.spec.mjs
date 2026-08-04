@@ -7,7 +7,8 @@ test.describe("platform workspace lifecycle UX", () => {
 
     await page.route((url) => url.pathname === "/api/v1/platform/tenants", async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [tenant], meta: { page: 1, limit: 100, total: 1 } } }) });
+      const counts = { all: 1, active: tenant.status === "active" ? 1 : 0, pending: tenant.status === "pending" ? 1 : 0, suspended: tenant.status === "suspended" ? 1 : 0, archived: tenant.status === "archived" ? 1 : 0 };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [tenant], meta: { page: 1, limit: 20, total: 1, counts } } }) });
     });
     await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-lifecycle", async (route) => {
       if (route.request().method() !== "PATCH") return route.fallback();

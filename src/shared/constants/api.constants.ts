@@ -9,6 +9,7 @@ export const API_ENDPOINTS = {
   tenantCompanies: "/api/v1/tenant/companies",
   tenantCompany: (companyId: string) => `/api/v1/tenant/companies/${companyId}`,
   platformTenants: "/api/v1/platform/tenants",
+  platformTenantsBulkLifecycle: "/api/v1/platform/tenants/bulk-lifecycle",
   platformTenant: (tenantId: string) => `/api/v1/platform/tenants/${tenantId}`,
   platformTenantCompanies: (tenantId: string) => `/api/v1/platform/tenants/${tenantId}/companies`,
   platformTenantOwner: (tenantId: string) => `/api/v1/platform/tenants/${tenantId}/owner`,

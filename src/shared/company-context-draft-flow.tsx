@@ -3,7 +3,19 @@
 import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Check } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  CheckCircle2,
+  FileText,
+  Link2,
+  LoaderCircle,
+  RefreshCw,
+  Sparkles,
+  Type,
+  UploadCloud,
+  X,
+} from "lucide-react";
 
 import {
   DEFAULT_COMPANY_LANGUAGE,
@@ -153,6 +165,7 @@ function CompanyContextDraftFlowBody() {
   // value per mode also lets a user move between tabs without losing work.
   const [sourceValues, setSourceValues] = useState<{ url: string; text: string }>({ url: "", text: "" });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [fields, setFields] = useState<Record<string, unknown>>({});
   const [fieldReview, setFieldReview] = useState<Record<string, string>>({});
@@ -160,6 +173,7 @@ function CompanyContextDraftFlowBody() {
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const noticeRef = useRef<HTMLDivElement>(null);
   const [identityStatus, setIdentityStatus] = useState<string | null>(null);
+  const [generationPhase, setGenerationPhase] = useState(0);
   const languageQuery = useQuery({
     queryKey: ["language-preference", companyId],
     queryFn: async () => {
@@ -285,14 +299,24 @@ function CompanyContextDraftFlowBody() {
     effectiveQuery.data?.management_identity?.status ??
     null;
   useEffect(() => {
-    if (notice?.kind !== "error") return;
+    if (!notice) return;
     requestAnimationFrame(() => noticeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   }, [notice]);
+  useEffect(() => {
+    if (!createMutation.isPending) {
+      setGenerationPhase(0);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setGenerationPhase((current) => (current + 1) % GENERATION_STAGES.length);
+    }, 1_600);
+    return () => window.clearInterval(timer);
+  }, [createMutation.isPending]);
   const canGenerate =
     Boolean(companyId) && !isBusy && (mode === "pdf" ? Boolean(selectedFile) : Boolean(sourceValue.trim()));
   const isEditable = shownDraft && (shownDraft.status === "draft" || shownDraft.status === "in_review");
   const coreComplete = isDraftReviewComplete(fields, fieldReview);
-  const saveLabel = canApprove && coreComplete ? "Save" : "Save draft";
+  const saveLabel = canApprove && coreComplete ? "Save & activate" : "Save draft";
 
   function updateField(keyName: string, value: string) {
     const existing = fields[keyName];
@@ -314,6 +338,10 @@ function CompanyContextDraftFlowBody() {
     if (mode === "pdf") return;
     setSourceValues((current) => ({ ...current, [mode]: value }));
   }
+  function clearSelectedFile() {
+    setSelectedFile(null);
+    setFileInputKey((current) => current + 1);
+  }
   function handleSourceTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
     event.preventDefault();
@@ -323,264 +351,384 @@ function CompanyContextDraftFlowBody() {
       : (currentIndex - 1 + SOURCE_MODES.length) % SOURCE_MODES.length;
     setMode(SOURCE_MODES[nextIndex]);
   }
-  function refreshDraft() {
-    draftQuery.refetch().then((result) => {
+  async function refreshDraft() {
+    try {
+      const result = await draftQuery.refetch();
       if (result.data) {
         setDraft(result.data);
         setFields(result.data.result.context ?? {});
         setFieldReview(result.data.result.field_review ?? result.data.result.completeness?.field_review ?? {});
       }
-    });
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    }
   }
+  const generationSourceLabel = mode === "pdf"
+    ? selectedFile?.name ?? "Company profile PDF"
+    : mode === "url"
+      ? "Company profile URL"
+      : "Pasted profile text";
   const sourceInput =
     mode === "pdf" ? (
-      <>
+      <div className="context-file-source">
         <input
-          key="company-profile-pdf-input"
-          className="context-flow-input"
+          key={fileInputKey}
+          id="company-profile-pdf-input"
           type="file"
           accept="application/pdf,.pdf"
           aria-label="Company profile PDF"
+          disabled={createMutation.isPending}
           onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
         />
-        <small className="context-flow-helper">
-          Upload one company profile PDF, up to 10 MB. Text is extracted securely before the AI draft is generated.
-        </small>
+        <div className="context-file-picker">
+          <span className="context-source-icon"><UploadCloud size={19} strokeWidth={1.8} aria-hidden="true" /></span>
+          <span className="context-file-picker-copy">
+            <strong>{selectedFile ? selectedFile.name : "Choose a company profile PDF"}</strong>
+            <small>{selectedFile ? `${formatFileSize(selectedFile.size)} · Ready to analyze` : "PDF only · maximum 10 MB"}</small>
+          </span>
+          <label className="context-file-picker-button" htmlFor="company-profile-pdf-input">{selectedFile ? "Change file" : "Browse"}</label>
+        </div>
         {selectedFile && (
-          <div className="context-pipeline-state">
-            <i />
-            {selectedFile.name}
+          <div className="context-file-selected" role="status">
+            <FileText size={16} strokeWidth={1.8} aria-hidden="true" />
+            <span>Selected source</span>
+            <button type="button" aria-label="Remove selected company profile PDF" onClick={clearSelectedFile} disabled={createMutation.isPending}><X size={15} aria-hidden="true" /></button>
           </div>
         )}
-      </>
+      </div>
     ) : mode === "url" ? (
-      <>
+      <div className="context-source-field">
+        <label htmlFor="company-profile-url-input">Profile URL</label>
         <input
-          key="company-profile-url-input"
+          id="company-profile-url-input"
           className="context-flow-input"
           value={sourceValue}
           aria-label="Company profile URL"
+          disabled={createMutation.isPending}
           onChange={(event) => updateSourceValue(event.target.value)}
           placeholder="https://company.example/about"
         />
-        <small className="context-flow-helper">The backend will fetch and sanitize the URL.</small>
-      </>
+        <small className="context-flow-helper">The source is fetched and sanitized before analysis.</small>
+      </div>
     ) : (
-      <textarea
-        key="company-profile-text-input"
-        className="context-flow-textarea"
-        value={sourceValue}
-        aria-label="Company profile source text"
-        onChange={(event) => updateSourceValue(event.target.value)}
-        placeholder="Paste the approved company context source text here..."
-      />
+      <div className="context-source-field">
+        <label htmlFor="company-profile-text-input">Profile text</label>
+        <textarea
+          id="company-profile-text-input"
+          className="context-flow-textarea"
+          value={sourceValue}
+          aria-label="Company profile source text"
+          disabled={createMutation.isPending}
+          onChange={(event) => updateSourceValue(event.target.value)}
+          placeholder="Paste the approved company context source text here..."
+        />
+      </div>
     );
+
+  const groupedFieldKeys = new Set(FIELD_GROUPS.flatMap((group) => group.fields));
+  const additionalFieldKeys = Object.keys(fields).filter((keyName) => !groupedFieldKeys.has(keyName));
+  const blockedFields = reviewBlockingFields(fields, fieldReview);
 
   return (
     <div className="context-flow-page">
-      <div className="context-flow-heading">
+      <header className="context-flow-heading">
         <div>
+          <span className="eyebrow">Company intelligence</span>
           <h1>Build Company Context</h1>
-          <p>
-            {canApprove
-              ? "Upload a company profile PDF or use a URL, then Save to activate the effective context."
-              : "Upload a company profile PDF or use a URL to generate a draft. Saving keeps the draft; activation requires approve permission."}
-          </p>
+          <p>Create a draft from a company source, review every fact, then activate it.</p>
         </div>
-      </div>
-      <section className="context-flow-card source-card">
+        {shownDraft && <span className={`context-draft-header-status status-${shownDraft.status}`}><span />{shownDraft.status === "approved" ? "Active context" : "Draft in review"}</span>}
+      </header>
+
+      {notice && (
+        <div ref={noticeRef} className={`context-flow-notice ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
+          {notice.kind === "error" ? <AlertCircle size={18} strokeWidth={1.8} aria-hidden="true" /> : <CheckCircle2 size={18} strokeWidth={1.8} aria-hidden="true" />}
+          <span>{notice.text}</span>
+        </div>
+      )}
+
+      <ContextWorkflow status={shownDraft?.status ?? null} isGenerating={createMutation.isPending} />
+
+      <section className="context-flow-card source-card" aria-busy={isBusy}>
         <div className="context-flow-step">
-          <span>01</span>
+          <span className="context-step-number">01</span>
           <div>
-            <span className="context-label">Source input</span>
-            <h2>Where should the draft come from?</h2>
+            <span className="context-label">Source</span>
+            <h2>Choose a company profile source</h2>
           </div>
+          <span className="context-step-side-note">Required</span>
         </div>
+
         <div className="source-mode-tabs" role="tablist" aria-label="Company profile source">
-          <button id="company-profile-tab-pdf" type="button" role="tab" aria-controls="company-profile-source-panel" aria-selected={mode === "pdf"} tabIndex={mode === "pdf" ? 0 : -1} className={mode === "pdf" ? "is-active" : ""} onClick={() => setMode("pdf")} onKeyDown={handleSourceTabKeyDown}>
-            Company PDF
+          <button id="company-profile-tab-pdf" type="button" role="tab" aria-controls="company-profile-source-panel" aria-selected={mode === "pdf"} tabIndex={mode === "pdf" ? 0 : -1} className={mode === "pdf" ? "is-active" : ""} disabled={createMutation.isPending} onClick={() => setMode("pdf")} onKeyDown={handleSourceTabKeyDown}>
+            <FileText size={16} strokeWidth={1.8} aria-hidden="true" /> Company PDF
           </button>
-          <button id="company-profile-tab-url" type="button" role="tab" aria-controls="company-profile-source-panel" aria-selected={mode === "url"} tabIndex={mode === "url" ? 0 : -1} className={mode === "url" ? "is-active" : ""} onClick={() => setMode("url")} onKeyDown={handleSourceTabKeyDown}>
-            URL
+          <button id="company-profile-tab-url" type="button" role="tab" aria-controls="company-profile-source-panel" aria-selected={mode === "url"} tabIndex={mode === "url" ? 0 : -1} className={mode === "url" ? "is-active" : ""} disabled={createMutation.isPending} onClick={() => setMode("url")} onKeyDown={handleSourceTabKeyDown}>
+            <Link2 size={16} strokeWidth={1.8} aria-hidden="true" /> URL
           </button>
-          <button id="company-profile-tab-text" type="button" role="tab" aria-controls="company-profile-source-panel" aria-selected={mode === "text"} tabIndex={mode === "text" ? 0 : -1} className={mode === "text" ? "is-active" : ""} onClick={() => setMode("text")} onKeyDown={handleSourceTabKeyDown}>
-            Text fallback
+          <button id="company-profile-tab-text" type="button" role="tab" aria-controls="company-profile-source-panel" aria-selected={mode === "text"} tabIndex={mode === "text" ? 0 : -1} className={mode === "text" ? "is-active" : ""} disabled={createMutation.isPending} onClick={() => setMode("text")} onKeyDown={handleSourceTabKeyDown}>
+            <Type size={16} strokeWidth={1.8} aria-hidden="true" /> Text fallback
           </button>
         </div>
-        <div id="company-profile-source-panel" role="tabpanel" aria-labelledby={`company-profile-tab-${mode}`}>
+        <div id="company-profile-source-panel" className="context-source-panel" role="tabpanel" aria-labelledby={`company-profile-tab-${mode}`}>
           {sourceInput}
         </div>
-        <small className="context-flow-helper" data-testid="context-draft-language-note">
-          Existing drafts are not retranslated when you change Display language. Only newly generated drafts use the current preference.
+        <small className="context-flow-helper context-language-note" data-testid="context-draft-language-note">
+          New drafts use your display language.
         </small>
-        <button
-          className="context-action"
-          data-testid="context-draft-generate"
-          disabled={!canGenerate}
-          onClick={() => {
-            if (!companyId) return;
-            createMutation.mutate();
-          }}
-        >
-          {createMutation.isPending ? "Extracting and generating..." : "Generate draft"}
-        </button>
+        <div className="context-source-footer">
+          <span className="context-action-hint">{createMutation.isPending ? "Analyzing the selected source..." : saveMutation.isPending ? "Saving the draft..." : retryIdentityMutation.isPending ? "Retrying management identity..." : canGenerate ? "Ready to analyze the selected source." : "Select a source to continue."}</span>
+          <button
+            className="context-action"
+            data-testid="context-draft-generate"
+            disabled={!canGenerate}
+            onClick={() => {
+              if (!companyId) return;
+              setNotice(null);
+              createMutation.mutate();
+            }}
+          >
+            {createMutation.isPending && <LoaderCircle className="context-spin" size={17} strokeWidth={2} aria-hidden="true" />}
+            {createMutation.isPending ? "Building draft..." : "Generate draft"}
+          </button>
+        </div>
+        {createMutation.isPending && <ContextGenerationPanel phase={generationPhase} sourceLabel={generationSourceLabel} />}
       </section>
+
       {shownDraft && (
-        <>
-          <div className="context-progress">
-            <ProgressStep label="Generated" active status={shownDraft.status} />
-            <ProgressStep label="Active" active={shownDraft.status === "approved"} status={shownDraft.status} />
+        <section className="context-flow-card context-review-card" aria-busy={saveMutation.isPending}>
+          <div className="context-flow-step">
+            <span className="context-step-number">02</span>
+            <div>
+              <span className="context-label">Draft revision {shownDraft.revision}</span>
+              <h2>Review generated fields</h2>
+            </div>
+            <span className={`context-status-badge flow-status-${shownDraft.status}`}>
+              {shownDraft.status === "approved" ? "Active" : shownDraft.status === "in_review" ? "In review" : "Draft"}
+            </span>
           </div>
-          <section className="context-flow-card">
-            <div className="context-flow-step">
-              <span>02</span>
-              <div>
-                <span className="context-label">Draft revision {shownDraft.revision}</span>
-                <h2>Review generated fields</h2>
-              </div>
-              <span className={`context-status-badge flow-status-${shownDraft.status}`}>
-                {shownDraft.status === "approved" ? "active" : shownDraft.status.replace("_", " ")}
-              </span>
+
+          <div className="context-draft-toolbar">
+            <div className="context-draft-toolbar-copy">
+              <span className="context-draft-status-dot" />
+              <span>{shownDraft.result.status === "insufficient_data" ? "Source needs additional company facts." : shownDraft.status === "approved" ? "This context is active for the selected company." : "Review the proposals before saving."}</span>
             </div>
-            <div className="context-pipeline-state">
-              <i />
-              {shownDraft.result.status === "insufficient_data"
-                ? "Backend marked the source insufficient for a complete context."
-                : shownDraft.status === "approved"
-                  ? "This draft has been activated as the effective company context."
-                  : "Pipeline output is ready. Edit fields, then Save."}
-              <button type="button" onClick={refreshDraft}>Refresh</button>
-            </div>
-            {isEditable && !coreComplete && (
-              <div className="context-missing-fields" role="status" data-testid="context-completeness">
-                <span>Review required before activation</span>
+            <button type="button" className="context-refresh-button" onClick={() => void refreshDraft()} disabled={draftQuery.isFetching || isBusy}>
+              <RefreshCw className={draftQuery.isFetching ? "context-spin" : ""} size={15} strokeWidth={1.9} aria-hidden="true" />
+              {draftQuery.isFetching ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+
+          {isEditable && blockedFields.length > 0 && (
+            <div className="context-missing-fields" role="status" data-testid="context-completeness">
+              <div className="context-missing-fields-heading">
+                <span className="context-warning-icon"><AlertCircle size={17} strokeWidth={1.8} aria-hidden="true" /></span>
                 <div>
-                  {reviewBlockingFields(fields, fieldReview).map((field) => <em key={field}>{humanize(field)}</em>)}
+                  <strong>{blockedFields.length} {blockedFields.length === 1 ? "field needs" : "fields need"} review</strong>
+                  <span>Confirm AI proposals or mark optional facts as not disclosed before activation.</span>
                 </div>
-                <small className="context-flow-helper">Confirm AI proposals or mark undisclosed fields. The AI will not turn an inference into a fact automatically.</small>
               </div>
-            )}
-            <div className="context-edit-grid">
-              {Object.entries(fields).map(([keyName, value]) => (
-                <label className="context-edit-field" key={keyName}>
-                  <span>
-                    {humanize(keyName)}
-                    {isEditable && <small className={`context-review-status status-${fieldReview[keyName] || "missing"}`}>{humanize(fieldReview[keyName] || "missing")}</small>}
-                  </span>
-                  {Array.isArray(value) ? (
-                    <textarea
-                      value={value.join("\n")}
-                      aria-label={`${humanize(keyName)} field`}
-                      onChange={(event) => updateField(keyName, event.target.value)}
-                      disabled={!isEditable || isBusy}
-                    />
-                  ) : (
-                    <textarea
-                      value={String(value ?? "")}
-                      aria-label={`${humanize(keyName)} field`}
-                      onChange={(event) => updateField(keyName, event.target.value)}
-                      disabled={!isEditable || isBusy}
-                    />
-                  )}
-                  {isEditable && fieldReview[keyName] === "ai_proposed" && (
-                    <button type="button" className="context-review-button" onClick={() => confirmField(keyName)} disabled={isBusy}>
-                      Confirm AI proposal
-                    </button>
-                  )}
-                  {isEditable && AI_REVIEW_CONTEXT_FIELDS.includes(keyName as (typeof AI_REVIEW_CONTEXT_FIELDS)[number]) && fieldReview[keyName] !== "reviewed_none_disclosed" && (
-                    <button type="button" className="context-review-button secondary" onClick={() => markNotDisclosed(keyName)} disabled={isBusy}>
-                      Mark not disclosed
-                    </button>
-                  )}
-                </label>
-              ))}
+              <div className="context-missing-field-list">
+                {blockedFields.map((field) => <span key={field}>{humanize(field)}</span>)}
+              </div>
             </div>
-            {isEditable && (
-              <>
-                <label className="preference-field">
-                  <span>Note</span>
-                  <textarea
-                    value={saveNote}
-                    onChange={(event) => setSaveNote(event.target.value)}
-                    maxLength={1000}
-                    placeholder="Optional note for the save record"
-                  />
-                </label>
-                <div className="context-flow-actions">
-                  <button
-                    className="context-action"
-                    data-testid="context-draft-save"
-                    disabled={isBusy || (!canApprove && !canDraft)}
-                    onClick={() => saveMutation.mutate()}
-                  >
-                    {saveMutation.isPending ? "Saving..." : saveLabel}
-                  </button>
-                </div>
-              </>
+          )}
+
+          <div className="context-review-groups">
+            {FIELD_GROUPS.map((group) => (
+              <ContextReviewGroup
+                key={group.id}
+                group={group}
+                fields={fields}
+                fieldReview={fieldReview}
+                isEditable={Boolean(isEditable)}
+                isBusy={isBusy}
+                onUpdate={updateField}
+                onConfirm={confirmField}
+                onMarkNotDisclosed={markNotDisclosed}
+              />
+            ))}
+            {additionalFieldKeys.length > 0 && (
+              <ContextReviewGroup
+                group={{ id: "additional", title: "Additional context", description: "Other fields returned by the context service.", fields: additionalFieldKeys }}
+                fields={fields}
+                fieldReview={fieldReview}
+                isEditable={Boolean(isEditable)}
+                isBusy={isBusy}
+                onUpdate={updateField}
+                onConfirm={confirmField}
+                onMarkNotDisclosed={markNotDisclosed}
+              />
             )}
-            {shownDraft.status === "approved" && (
-              <div className="context-approved-state" data-testid="context-approved-state">
-                <strong>Active</strong>
-                <span>The effective context has been refreshed from the backend.</span>
-                {resolvedIdentityStatus && (
-                  <p data-testid="context-draft-identity-status">
-                    Management identity: <strong>{resolvedIdentityStatus}</strong>
-                    {resolvedIdentityStatus !== "ready"
-                      ? " — news intake stays blocked until identity is ready."
-                      : " — ready for news intake."}
-                  </p>
-                )}
+          </div>
+
+          {isEditable && (
+            <>
+              <label className="context-note-field">
+                <span>Save note <small>Optional</small></span>
+                <textarea value={saveNote} onChange={(event) => setSaveNote(event.target.value)} maxLength={1000} placeholder="Add a note for the review record" disabled={isBusy} />
+              </label>
+              <div className="context-save-bar">
+                <div>
+                  <strong>{coreComplete ? "Ready to activate" : "Draft can be saved"}</strong>
+                  <span>{coreComplete ? "All generated fields have been reviewed." : "Activation stays blocked until required review is complete."}</span>
+                </div>
+                <button className="context-action" data-testid="context-draft-save" disabled={isBusy || (!canApprove && !canDraft)} onClick={() => saveMutation.mutate()}>
+                  {saveMutation.isPending && <LoaderCircle className="context-spin" size={17} strokeWidth={2} aria-hidden="true" />}
+                  {saveMutation.isPending ? "Saving..." : saveLabel}
+                </button>
+              </div>
+            </>
+          )}
+
+          {shownDraft.status === "approved" && (
+            <div className="context-approved-state" data-testid="context-approved-state">
+              <div className="context-approved-heading">
+                <span className="context-approved-icon"><CheckCircle2 size={21} strokeWidth={1.8} aria-hidden="true" /></span>
+                <div><strong>Context active</strong><span>The effective company context is ready to guide relevance and issue analysis.</span></div>
+              </div>
+              <div className="context-identity-status" data-testid="context-draft-identity-status">
+                {effectiveQuery.isPending && !resolvedIdentityStatus ? <LoaderCircle className="context-spin" size={16} strokeWidth={2} aria-hidden="true" /> : <Sparkles size={16} strokeWidth={1.8} aria-hidden="true" />}
+                <span>Management identity: <strong>{resolvedIdentityStatus ?? "checking"}</strong>{resolvedIdentityStatus === "ready" ? " · ready for news intake." : resolvedIdentityStatus ? " · news intake stays blocked until identity is ready." : " · confirming readiness."}</span>
                 {canApprove && resolvedIdentityStatus && resolvedIdentityStatus !== "ready" && (
-                  <button
-                    type="button"
-                    className="context-action"
-                    data-testid="context-draft-retry-identity"
-                    disabled={isBusy}
-                    onClick={() => {
-                      setNotice(null);
-                      retryIdentityMutation.mutate();
-                    }}
-                  >
-                    {retryIdentityMutation.isPending ? "Retrying identity…" : "Retry identity"}
+                  <button type="button" className="context-inline-action" data-testid="context-draft-retry-identity" disabled={isBusy} onClick={() => { setNotice(null); retryIdentityMutation.mutate(); }}>
+                    {retryIdentityMutation.isPending ? <><LoaderCircle className="context-spin" size={14} aria-hidden="true" /> Retrying...</> : "Retry identity"}
                   </button>
                 )}
               </div>
-            )}
-          </section>
-        </>
+              {effectiveQuery.isError && <div className="context-inline-error" role="alert">Active context confirmation failed. <button type="button" onClick={() => void effectiveQuery.refetch()}>Try again</button></div>}
+            </div>
+          )}
+        </section>
       )}
+
       {effectiveQuery.data && (
         <section className="context-effective-refresh">
-          <span className="context-label">Effective context refreshed</span>
+          <span className="context-label">Effective context</span>
           <strong>Version {effectiveQuery.data.version}</strong>
           <span>Updated {formatDate(effectiveQuery.data.updated_at)}</span>
         </section>
-      )}
-      {notice && (
-        <div ref={noticeRef} className={`preference-notice ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
-          {notice.text}
-        </div>
       )}
     </div>
   );
 }
 
-function ProgressStep({ label, active, status }: { label: string; active?: boolean; status: string }) {
+function ContextWorkflow({ status, isGenerating }: { status: DraftStatus | null; isGenerating: boolean }) {
+  const activeStep = isGenerating ? "review" : status === "approved" ? "active" : status ? "review" : "source";
+  const steps = [
+    { id: "source", label: "Source", detail: isGenerating ? "Source ready" : status ? "Complete" : "Choose a source" },
+    { id: "review", label: isGenerating ? "Generating" : "Review", detail: isGenerating ? "Building draft" : status ? "Check every fact" : "Pending" },
+    { id: "active", label: "Activate", detail: status === "approved" ? "Context active" : "Pending" },
+  ];
   return (
-    <div className={`context-progress-step ${active ? "is-active" : ""}`}>
-      <span>{active ? <Check size={13} strokeWidth={2.5} aria-hidden="true" /> : "·"}</span>
-      <strong>{label}</strong>
-      <small>{active ? (status === "approved" ? "active" : status.replace("_", " ")) : "Pending"}</small>
+    <ol className="context-workflow" aria-label="Company context workflow">
+      {steps.map((step, index) => {
+        const stepIndex = steps.findIndex((item) => item.id === activeStep);
+        const state = step.id === activeStep ? "is-current" : index < stepIndex || (step.id === "source" && Boolean(status)) || (step.id === "review" && status === "approved") ? "is-complete" : "";
+        return <li className={`context-workflow-step ${state}`} key={step.id}><span>{state === "is-complete" ? <Check size={14} strokeWidth={2.5} aria-hidden="true" /> : index + 1}</span><div><strong>{step.label}</strong><small>{step.detail}</small></div>{index < steps.length - 1 && <i />}</li>;
+      })}
+    </ol>
+  );
+}
+
+function ContextGenerationPanel({ phase, sourceLabel }: { phase: number; sourceLabel: string }) {
+  return (
+    <div className="context-generation-panel" data-testid="context-generation-state" role="status" aria-live="polite" aria-busy="true">
+      <div className="context-generation-visual" aria-hidden="true"><div className="context-generation-orbit"><span /><span /><span /></div><div className="context-generation-core"><Sparkles size={20} strokeWidth={1.8} /></div></div>
+      <span className="context-label">Generating context</span>
+      <h3>Building a reviewable draft</h3>
+      <p>Analyzing {sourceLabel}</p>
+      <ol className="context-generation-steps">
+        {GENERATION_STAGES.map((stage, index) => <li className={index < phase ? "is-complete" : index === phase ? "is-current" : ""} key={stage.id}><span>{index < phase ? <Check size={12} strokeWidth={2.5} aria-hidden="true" /> : index + 1}</span>{stage.label}</li>)}
+      </ol>
+      <div className="context-generation-progress" role="progressbar" aria-label="Context generation progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={GENERATION_PROGRESS[phase]}><span style={{ width: `${GENERATION_PROGRESS[phase]}%` }} /></div>
+      <small>Keep this page open. You can review and correct every proposed fact before saving.</small>
+    </div>
+  );
+}
+
+function ContextReviewGroup({ group, fields, fieldReview, isEditable, isBusy, onUpdate, onConfirm, onMarkNotDisclosed }: ContextReviewGroupProps) {
+  const reviewed = !isEditable
+    ? group.fields.filter((field) => field in fields).length
+    : group.fields.filter((field) => {
+        if (REQUIRED_CONTEXT_FIELDS.includes(field as (typeof REQUIRED_CONTEXT_FIELDS)[number])) return hasFieldValue(fields[field]) && fieldReview[field] === "user_confirmed";
+        return ["user_confirmed", "reviewed_none_disclosed"].includes(fieldReview[field]);
+      }).length;
+  return (
+    <section className="context-review-group" aria-labelledby={`context-review-group-${group.id}`}>
+      <div className="context-review-group-heading">
+        <div><span className="context-label">{group.id === "core" ? "Required facts" : "Leadership context"}</span><h3 id={`context-review-group-${group.id}`}>{group.title}</h3><p>{isEditable ? group.description : "Saved in the active company context."}</p></div>
+        <span className={`context-review-count ${reviewed === group.fields.length ? "is-complete" : ""}`}>{reviewed}/{group.fields.length} reviewed</span>
+      </div>
+      <div className="context-edit-grid">
+        {group.fields.filter((keyName) => keyName in fields).map((keyName) => <ContextFieldEditor key={keyName} keyName={keyName} value={fields[keyName]} review={fieldReview[keyName]} isEditable={isEditable} isBusy={isBusy} onUpdate={onUpdate} onConfirm={onConfirm} onMarkNotDisclosed={onMarkNotDisclosed} />)}
+      </div>
+    </section>
+  );
+}
+
+function ContextFieldEditor({ keyName, value, review, isEditable, isBusy, onUpdate, onConfirm, onMarkNotDisclosed }: ContextFieldEditorProps) {
+  const isOptional = AI_REVIEW_CONTEXT_FIELDS.includes(keyName as (typeof AI_REVIEW_CONTEXT_FIELDS)[number]);
+  const displayReview = isEditable ? review || "missing" : "user_confirmed";
+  const reviewLabel = !isEditable ? "Saved" : review === "ai_proposed" ? "AI proposed" : review === "user_confirmed" ? "Reviewed" : review === "reviewed_none_disclosed" ? "Not disclosed" : "Needs review";
+  return (
+    <div className={`context-edit-field field-${keyName} ${isEditable && review === "missing" ? "is-missing" : ""}`}>
+      <div className="context-edit-field-heading"><label htmlFor={`context-field-${keyName}`}>{humanize(keyName)}</label><span className={`context-review-status status-${displayReview}`}>{reviewLabel}</span></div>
+      <textarea id={`context-field-${keyName}`} value={Array.isArray(value) ? value.join("\n") : String(value ?? "")} aria-label={`${humanize(keyName)} field`} onChange={(event) => onUpdate(keyName, event.target.value)} disabled={!isEditable || isBusy} />
+      {isEditable && <div className="context-review-actions">
+        {review === "ai_proposed" && <button type="button" className="context-review-button" onClick={() => onConfirm(keyName)} disabled={isBusy}><Check size={14} strokeWidth={2.2} aria-hidden="true" />Confirm AI proposal</button>}
+        {isOptional && review !== "reviewed_none_disclosed" && <button type="button" className="context-review-button secondary" onClick={() => onMarkNotDisclosed(keyName)} disabled={isBusy}>Mark not disclosed</button>}
+      </div>}
     </div>
   );
 }
 function humanize(value: string) {
   return value.replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
+type ContextFieldGroup = { id: string; title: string; description: string; fields: string[] };
+type ContextReviewGroupProps = {
+  group: ContextFieldGroup;
+  fields: Record<string, unknown>;
+  fieldReview: Record<string, string>;
+  isEditable: boolean;
+  isBusy: boolean;
+  onUpdate: (keyName: string, value: string) => void;
+  onConfirm: (keyName: string) => void;
+  onMarkNotDisclosed: (keyName: string) => void;
+};
+type ContextFieldEditorProps = Omit<ContextReviewGroupProps, "group" | "fields" | "fieldReview"> & {
+  keyName: string;
+  value: unknown;
+  review?: string;
+};
 const REQUIRED_CONTEXT_FIELDS = ["name", "industry", "description", "products", "customers", "regions", "priorities"] as const;
 const AI_REVIEW_CONTEXT_FIELDS = ["sub_industry", "competitors", "goals", "risks", "topics", "dependencies"] as const;
 const SOURCE_MODES: SourceMode[] = ["pdf", "url", "text"];
+const FIELD_GROUPS: ContextFieldGroup[] = [
+  {
+    id: "core",
+    title: "Core company facts",
+    description: "These facts must be present and confirmed before the context can become effective.",
+    fields: [...REQUIRED_CONTEXT_FIELDS],
+  },
+  {
+    id: "signals",
+    title: "Leadership signals",
+    description: "Review the signals the engine will use to interpret leadership relevance. If a fact is not disclosed, say so explicitly.",
+    fields: [...AI_REVIEW_CONTEXT_FIELDS],
+  },
+];
+const GENERATION_STAGES = [
+  { id: "read", label: "Reading the source" },
+  { id: "filter", label: "Filtering business information" },
+  { id: "build", label: "Building company context" },
+];
+const GENERATION_PROGRESS = [24, 58, 82];
 function hasFieldValue(value: unknown) { return Array.isArray(value) ? value.length > 0 : typeof value === "string" && value.trim().length > 0; }
+function formatFileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 function reviewBlockingFields(fields: Record<string, unknown>, review: Record<string, string>) {
   return [...REQUIRED_CONTEXT_FIELDS, ...AI_REVIEW_CONTEXT_FIELDS].filter((field) => {
     if (REQUIRED_CONTEXT_FIELDS.includes(field as (typeof REQUIRED_CONTEXT_FIELDS)[number])) return !hasFieldValue(fields[field]) || review[field] !== "user_confirmed";

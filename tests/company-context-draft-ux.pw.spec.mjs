@@ -15,7 +15,7 @@ function envelope(data, meta = {}) {
   return { success: true, data, meta: { request_id: "company-context-draft-ux", ...meta } };
 }
 
-async function seedDraftSession(page) {
+async function seedDraftSession(page, permissions = ANALYST_PERMISSIONS, role = "analyst") {
   const session = {
     authenticated: true,
     accessToken: "company-context-draft-ux-token",
@@ -23,20 +23,20 @@ async function seedDraftSession(page) {
       id: "user:analyst@example.com",
       email: "analyst@example.com",
       fullName: "Analyst User",
-      role: "analyst",
+      role,
       actorType: "human",
     },
-    permissions: ANALYST_PERMISSIONS,
+    permissions,
     tenantId: "tenant-a",
     activeCompanyId: "company-a",
     authorizedCompanies: [COMPANY],
   };
   const sessionData = {
-    actor: { id: session.actor.id, email: session.actor.email, type: "human", role: "analyst", membership_id: "membership-analyst" },
+    actor: { id: session.actor.id, email: session.actor.email, type: "human", role, membership_id: `membership-${role}` },
     tenant_id: "tenant-a",
     company_id: "company-a",
-    role: "analyst",
-    permissions: ANALYST_PERMISSIONS,
+    role,
+    permissions,
     authorized_companies: [COMPANY],
   };
 
@@ -132,6 +132,7 @@ test.describe("Company Context draft UX gate", () => {
     await expect(page.getByTestId("context-draft-generate")).toBeEnabled();
     await page.getByTestId("context-draft-generate").click();
     await expect(page.getByRole("alert").filter({ hasText: "Enter a valid company profile URL." })).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
     await expect(page).toHaveScreenshot("company-context-draft-validation-error.png", { fullPage: true });
   });
 
@@ -140,13 +141,14 @@ test.describe("Company Context draft UX gate", () => {
     let draft = incompleteDraft();
     const fulfillDraft = async (route) => {
       if (route.request().method() !== "POST") return route.fallback();
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await new Promise((resolve) => setTimeout(resolve, 4500));
       await route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(envelope({ draft })) });
     };
     await page.route("**/api/v1/company-context/draft", fulfillDraft);
     await page.route("**/api/v1/company-context/draft/pdf", fulfillDraft);
     await page.route("**/api/v1/company-context/drafts/draft-incomplete", async (route) => {
       if (route.request().method() !== "PATCH") return route.fallback();
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       draft = { ...draft, revision: draft.revision + 1 };
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(envelope(draft)) });
     });
@@ -154,8 +156,12 @@ test.describe("Company Context draft UX gate", () => {
     await page.goto("/id/settings/company-context/draft");
     await page.getByLabel("Company profile PDF").setInputFiles({ name: "company-profile.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7") });
     await page.getByTestId("context-draft-generate").click();
-    await expect(page.getByTestId("context-draft-generate")).toHaveText("Extracting and generating...");
+    await expect(page.getByTestId("context-draft-generate")).toHaveText("Building draft...");
     await expect(page.getByTestId("context-draft-generate")).toBeDisabled();
+    await expect(page.getByTestId("context-generation-state")).toBeVisible();
+    await expect(page.getByText("Building a reviewable draft")).toBeVisible();
+    await expect(page.getByText("Analyzing the selected source...")).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
     await expect(page).toHaveScreenshot("company-context-draft-loading.png", { fullPage: true });
 
     await expect(page.getByText("Review generated fields")).toBeVisible();
@@ -169,7 +175,10 @@ test.describe("Company Context draft UX gate", () => {
     await page.getByRole("button", { name: "Confirm AI proposal" }).first().click();
     await page.getByRole("button", { name: "Mark not disclosed" }).first().click();
     await page.getByTestId("context-draft-save").click();
-    await expect(page.locator(".preference-notice.success")).toContainText("Draft saved. Add the missing core company facts");
+    await expect(page.getByTestId("context-draft-save")).toHaveText("Saving...");
+    await expect(page.getByTestId("context-draft-save")).toBeDisabled();
+    await expect(page.getByText("Saving the draft...")).toBeVisible();
+    await expect(page.locator(".context-flow-notice.success")).toContainText("Draft saved. Add the missing core company facts");
     await expect(page.getByText("active", { exact: true })).toHaveCount(0);
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(page).toHaveScreenshot("company-context-draft-saved-incomplete.png", { fullPage: true });
@@ -210,5 +219,43 @@ test.describe("Company Context draft UX gate", () => {
     await expect(page.getByRole("button", { name: "Mark not disclosed" })).toHaveCount(0);
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(page).toHaveScreenshot("company-context-draft-approved-readonly.png", { fullPage: true });
+  });
+
+  test("shows identity retry progress when the active context is waiting for readiness", async ({ page }) => {
+    await seedDraftSession(page, [...ANALYST_PERMISSIONS, "company_context.approve"], "company_admin");
+    const approved = { ...incompleteDraft(), status: "approved", is_effective: true, result: { ...incompleteDraft().result, status: "complete" } };
+
+    await page.route("**/api/v1/companies/company-a/context", async (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(envelope({ version: 2, updated_at: "2026-08-03T10:00:00Z", management_identity: { status: "failed", error_message: "Identity generation needs another attempt." } })),
+    }));
+    await page.route("**/api/v1/company-context/draft/pdf", async (route) => route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify(envelope({ draft: approved })),
+    }));
+    await page.route("**/api/v1/companies/company-a/context/management-identity/retry", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 7000));
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify(envelope({ management_identity: { status: "ready" } })),
+      });
+    });
+
+    await page.goto("/id/settings/company-context/draft");
+    await page.getByLabel("Company profile PDF").setInputFiles({ name: "company-profile.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7") });
+    await page.getByTestId("context-draft-generate").click();
+    await expect(page.getByTestId("context-approved-state")).toBeVisible();
+    const retryButton = page.getByTestId("context-draft-retry-identity");
+    await expect(retryButton).toBeVisible();
+    await retryButton.click();
+    await expect(retryButton).toHaveText("Retrying...");
+    await expect(retryButton).toBeDisabled();
+    await expect(page.getByText("Retrying management identity...")).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(page).toHaveScreenshot("company-context-draft-identity-retry-loading.png", { fullPage: true });
+    await expect(page.getByTestId("context-draft-identity-status")).toContainText("Management identity: ready", { timeout: 10_000 });
   });
 });

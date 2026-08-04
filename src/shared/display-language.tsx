@@ -9,6 +9,7 @@ import {
   resolveCompanyLanguage,
   type CompanyLanguage,
 } from "@/shared/company-language";
+import { AppSelect } from "@/shared/app-select";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { activeCompanyLabel } from "@/shared/company-options";
 import { axiosClient } from "@/shared/lib/axios-client";
@@ -149,18 +150,19 @@ function DisplayLanguageBody() {
       <section className="preference-card">
         <label className="preference-field">
           <span>Display language</span>
-          <select
+          <AppSelect
             data-testid="display-language-select"
             value={language}
+            options={[
+              { value: "id", label: "Bahasa Indonesia" },
+              { value: "en", label: "English" },
+            ]}
             disabled={loadPending || loadFailed || mutation.isPending}
-            onChange={(event) => {
-              setLanguage(resolveCompanyLanguage(event.target.value));
+            onChange={(value) => {
+              setLanguage(resolveCompanyLanguage(value));
               setNotice(null);
             }}
-          >
-            <option value="id">Bahasa Indonesia</option>
-            <option value="en">English</option>
-          </select>
+          />
           <small>Applies to newly generated AI output for the active company only.</small>
         </label>
       </section>

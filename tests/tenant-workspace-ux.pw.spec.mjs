@@ -76,7 +76,8 @@ test.describe("tenant owner/admin workspace UX gate", () => {
     await expect(companyRow.getByRole("button", { name: "Edit" })).toBeVisible();
     await companyRow.getByRole("button", { name: "Edit" }).click();
     await companyRow.getByLabel("Company name").fill("Company B Updated");
-    await companyRow.getByLabel("Status").selectOption("suspended");
+    await companyRow.getByRole("combobox", { name: "Status" }).click();
+    await companyRow.getByRole("option", { name: "Suspended", exact: true }).click();
     await companyRow.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("status")).toContainText("Company details updated");
     await expect(page.getByText("Suspended")).toBeVisible();
@@ -118,14 +119,20 @@ test.describe("tenant owner/admin workspace UX gate", () => {
     await page.goto("/id/settings/access");
     await expect(page.getByRole("main").getByRole("heading", { name: "Access", exact: true })).toBeVisible();
     await expect(page.getByText("analyst@example.com")).toBeVisible();
-    await expect(page.getByLabel("Role").locator("option")).toHaveCount(7);
-    const roleLabels = await page.getByLabel("Role").locator("option").allTextContents();
+    const roleSelect = page.getByRole("combobox", { name: "Role" });
+    await roleSelect.click();
+    await expect(page.getByRole("option")).toHaveCount(7);
+    const roleLabels = await page.getByRole("option").allTextContents();
     expect(roleLabels).toEqual(["Tenant admin", "Company admin", "Executive", "Executive viewer", "Analyst", "Reviewer", "Viewer"]);
+    await page.keyboard.press("Escape");
     await expect(page).toHaveScreenshot("tenant-access-initial.png", { fullPage: true });
 
     await page.getByLabel("Work email").fill("newuser@example.com");
-    await page.getByLabel("Role").selectOption("executive");
-    await page.getByLabel("Company access").selectOption("company-b");
+    await roleSelect.click();
+    await page.getByRole("option", { name: "Executive", exact: true }).click();
+    const companyAccessSelect = page.getByRole("combobox", { name: "Company access" });
+    await companyAccessSelect.click();
+    await page.getByRole("option", { name: "Company B", exact: true }).click();
     await page.getByRole("button", { name: "Invite member" }).click();
     await expect(page.getByRole("status")).toContainText("Invitation created");
     expect(requests[0].body).toMatchObject({ email: "newuser@example.com", role: "executive", company_id: "company-b" });
@@ -134,8 +141,10 @@ test.describe("tenant owner/admin workspace UX gate", () => {
 
     const analystRow = page.locator(".access-member-item").filter({ hasText: "analyst@example.com" });
     await analystRow.getByRole("button", { name: "Edit" }).click();
-    await analystRow.getByRole("combobox", { name: "Edit role for analyst@example.com" }).selectOption("reviewer");
-    await analystRow.getByRole("combobox", { name: "Edit company access for analyst@example.com" }).selectOption("company-b");
+    await analystRow.getByRole("combobox", { name: "Edit role for analyst@example.com" }).click();
+    await analystRow.getByRole("option", { name: "Reviewer", exact: true }).click();
+    await analystRow.getByRole("combobox", { name: "Edit company access for analyst@example.com" }).click();
+    await analystRow.getByRole("option", { name: "Company B", exact: true }).click();
     await analystRow.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("status")).toContainText("Access updated");
     await expect(page.getByText("Reviewer · Company B")).toBeVisible();
@@ -215,7 +224,8 @@ test.describe("tenant owner/admin workspace UX gate", () => {
     await expect(page.getByRole("region", { name: "Tenant audit events" }).getByText("Allowed")).toBeVisible();
     await expect(page).toHaveScreenshot("tenant-audit-log-initial.png", { fullPage: true });
 
-    await page.getByLabel("Outcome").selectOption("denied");
+    await page.getByRole("combobox", { name: "Outcome" }).click();
+    await page.getByRole("option", { name: "Denied", exact: true }).click();
     await expect(page.getByRole("heading", { name: "No audit events" })).toBeVisible();
     await expect(page.getByText("Access decisions will appear here as this workspace is used.")).toBeVisible();
     await expect(page).toHaveScreenshot("tenant-audit-log-empty.png", { fullPage: true });
@@ -270,11 +280,12 @@ test.describe("tenant owner/admin workspace UX gate", () => {
 
     await page.goto("/id/settings/display-language");
     await expect(page.getByRole("heading", { name: "Display language", exact: true })).toBeVisible();
-    await expect(page.getByTestId("display-language-select")).toHaveValue("id");
+    await expect(page.getByTestId("display-language-select")).toContainText("Bahasa Indonesia");
     await expect(page.getByTestId("display-language-save")).toBeDisabled();
     await expect(page).toHaveScreenshot("tenant-display-language-initial.png");
 
-    await page.getByTestId("display-language-select").selectOption("en");
+    await page.getByTestId("display-language-select").click();
+    await page.getByRole("option", { name: "English", exact: true }).click();
     await expect(page.getByTestId("display-language-save")).toBeEnabled();
     await page.getByTestId("display-language-save").click();
     await expect(page.getByRole("status")).toContainText("Display language preference saved");

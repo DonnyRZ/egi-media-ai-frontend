@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
+import { AppSelect } from "@/shared/app-select";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
@@ -231,18 +232,16 @@ export function AccessManagement() {
               </label>
               <label>
                 <span>Role</span>
-                <select aria-label="Role" value={role} onChange={(event) => setRole(event.target.value as CustomerRole)}>
-                  {roles.map((item) => <option key={item} value={item}>{roleLabels[item]}</option>)}
-                </select>
+                <AppSelect aria-label="Role" value={role} options={roles.map((item) => ({ value: item, label: roleLabels[item] }))} onChange={setRole} />
               </label>
               {!isCompanyScoped && <label>
                 <span>Company access</span>
-                <select aria-label="Company access" value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
-                  <option value="">All companies</option>
-                  {companyOptions.map((company) => (
-                    <option key={company.company_id} value={company.company_id}>{company.name || company.company_id}</option>
-                  ))}
-                </select>
+                <AppSelect
+                  aria-label="Company access"
+                  value={companyId}
+                  options={[{ value: "", label: "All companies" }, ...companyOptions.map((company) => ({ value: company.company_id, label: company.name || company.company_id }))]}
+                  onChange={setCompanyId}
+                />
               </label>}
               <button className="context-action" type="submit" disabled={invite.isPending}>
                 {invite.isPending ? "Inviting…" : "Invite member"}
@@ -292,16 +291,16 @@ export function AccessManagement() {
                       <div className="access-edit-panel">
                         <label>
                           <span>Role</span>
-                          <select aria-label={`Edit role for ${label}`} value={editingRole} onChange={(event) => setEditingRole(event.target.value as CustomerRole)}>
-                            {roles.map((option) => <option key={option} value={option}>{roleLabels[option]}</option>)}
-                          </select>
+                          <AppSelect aria-label={`Edit role for ${label}`} value={editingRole} options={roles.map((option) => ({ value: option, label: roleLabels[option] }))} onChange={setEditingRole} />
                         </label>
                         {!isCompanyScoped && <label>
                           <span>Company access</span>
-                          <select aria-label={`Edit company access for ${label}`} value={editingCompanyId} onChange={(event) => setEditingCompanyId(event.target.value)}>
-                            <option value="">All companies</option>
-                            {companyOptions.map((company) => <option key={company.company_id} value={company.company_id}>{company.name || company.company_id}</option>)}
-                          </select>
+                          <AppSelect
+                            aria-label={`Edit company access for ${label}`}
+                            value={editingCompanyId}
+                            options={[{ value: "", label: "All companies" }, ...companyOptions.map((company) => ({ value: company.company_id, label: company.name || company.company_id }))]}
+                            onChange={setEditingCompanyId}
+                          />
                         </label>}
                         <div className="access-edit-actions">
                           <button className="context-action" type="button" disabled={update.isPending} onClick={() => update.mutate({ membershipId: item.membership_id, version: item.version, role: editingRole, ...(isCompanyScoped ? {} : { companyId: editingCompanyId }) })}>

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CircleAlert, FileClock, RefreshCw } from "lucide-react";
 import { isAxiosError } from "axios";
 
+import { AppSelect } from "@/shared/app-select";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import type { ApiSuccessResponse } from "@/shared/types/api.types";
@@ -51,7 +52,19 @@ function AuditLog({ endpoint, eyebrow, description, tableLabel, emptyMessage }: 
 
       <section className="platform-ops-toolbar" aria-label="Audit filters">
         <label><span>Action</span><input value={action} onChange={(event) => setAction(event.target.value)} placeholder="Filter by action" /></label>
-        <label><span>Outcome</span><select value={outcome} onChange={(event) => setOutcome(event.target.value)}><option value="">All outcomes</option><option value="allowed">Allowed</option><option value="denied">Denied</option></select></label>
+        <label>
+          <span>Outcome</span>
+          <AppSelect
+            aria-label="Outcome"
+            value={outcome}
+            options={[
+              { value: "", label: "All outcomes" },
+              { value: "allowed", label: "Allowed" },
+              { value: "denied", label: "Denied" },
+            ]}
+            onChange={setOutcome}
+          />
+        </label>
         <button className="platform-secondary-button" onClick={() => void query.refetch()}><RefreshCw size={15} aria-hidden="true" /> Refresh</button>
       </section>
 

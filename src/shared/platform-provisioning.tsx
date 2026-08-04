@@ -5,6 +5,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "rea
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
+import { AppSelect } from "@/shared/app-select";
 import { displayCompanyName } from "@/shared/company-options";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { PermissionGate } from "@/shared/permission-guard";
@@ -266,6 +267,12 @@ export function PlatformProvisioning() {
   const hasAnyWorkspace = (filteredCounts?.all ?? tenants.data?.meta?.total ?? 0) > 0;
   const emptyStateHeading = !searchQuery && !hasAnyWorkspace ? "No customer workspaces yet" : !searchQuery && statusFilter !== "all" ? `No ${STATUS_META[statusFilter].label.toLowerCase()} workspaces` : "No matching workspaces";
   const emptyStateDescription = !searchQuery && !hasAnyWorkspace ? "Create the first workspace to begin provisioning a company and its owner." : "Adjust the search or status filter.";
+  const statusOptions = STATUS_FILTERS.map((filter) => {
+    const count = filter.value === "all"
+      ? (filteredCounts?.all ?? counts.total)
+      : (filteredCounts?.[filter.value] ?? (filter.value === statusFilter ? (tenants.data?.meta.total ?? 0) : 0));
+    return { value: filter.value, label: filter.label, meta: count };
+  });
 
   const selectedCanProvision = Boolean(selected && (selected.status === "active" || selected.status === "pending"));
   const ownerMembership = memberships.data?.find((item) => item.role === "tenant_owner" && item.status === "active") || memberships.data?.find((item) => item.role === "tenant_owner" && item.status === "invited");
@@ -469,13 +476,8 @@ export function PlatformProvisioning() {
 
           <div className="platform-registry-toolbar">
             <div><span className="platform-toolbar-label">Filter by status</span><span className="platform-toolbar-hint">Active first; archived when needed.</span></div>
-            <div className="platform-status-filters" role="tablist" aria-label="Workspace status filter">
-              {STATUS_FILTERS.map((filter) => {
-                const count = filter.value === "all"
-                  ? (filteredCounts?.all ?? counts.total)
-                  : (filteredCounts?.[filter.value] ?? (filter.value === statusFilter ? (tenants.data?.meta.total ?? 0) : 0));
-                return <button key={filter.value} type="button" role="tab" aria-selected={statusFilter === filter.value} className={statusFilter === filter.value ? "is-active" : ""} onClick={() => setStatusFilter(filter.value)}>{filter.label}<span>{count}</span></button>;
-              })}
+            <div className="platform-status-select">
+              <AppSelect aria-label="Filter workspace status" value={statusFilter} options={statusOptions} onChange={setStatusFilter} size="sm" />
             </div>
           </div>
 
@@ -546,7 +548,7 @@ export function PlatformProvisioning() {
               <div className="platform-form-section">
                 <h3>Tenant owner</h3>
                 {companies.data && companies.data.length > 0 ? (
-                  selectedCanProvision ? <><p>Invite the person who will manage this customer workspace.</p><form className="platform-owner-form" onSubmit={(event) => { event.preventDefault(); if (canAssign) assignOwner.mutate(); }}><div className="platform-field"><label htmlFor="owner-email">Owner email</label><input id="owner-email" aria-label="Owner email" type="email" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} placeholder="owner@company.com" /></div><div className="platform-field"><label htmlFor="owner-name">Full name <span>(optional)</span></label><input id="owner-name" aria-label="Owner full name" value={ownerFullName} onChange={(event) => setOwnerFullName(event.target.value)} placeholder="Full name" /></div><div className="platform-field"><label htmlFor="owner-company">Company</label><select id="owner-company" aria-label="Owner company" value={ownerCompanyId} onChange={(event) => setOwnerCompanyId(event.target.value)} required><option value="">Select company</option>{companies.data.map((item) => <option key={item.company_id} value={item.company_id}>{displayCompanyName(item)}</option>)}</select></div><button type="submit" className="platform-primary-button" disabled={!canAssign}>{assignOwner.isPending ? "Assigning…" : "Assign owner"}</button></form>{assignOwner.isError && <p className="platform-form-error" role="alert">Owner could not be assigned. {errorMessage(assignOwner.error, "Check the email and selected company.")}</p>}</> : <div className="platform-readonly-panel"><strong>Owner changes are paused</strong><span>The current workspace status is {STATUS_META[selected.status].label.toLowerCase()}. Existing ownership remains available for audit.</span></div>
+                  selectedCanProvision ? <><p>Invite the person who will manage this customer workspace.</p><form className="platform-owner-form" onSubmit={(event) => { event.preventDefault(); if (canAssign) assignOwner.mutate(); }}><div className="platform-field"><label htmlFor="owner-email">Owner email</label><input id="owner-email" aria-label="Owner email" type="email" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} placeholder="owner@company.com" /></div><div className="platform-field"><label htmlFor="owner-name">Full name <span>(optional)</span></label><input id="owner-name" aria-label="Owner full name" value={ownerFullName} onChange={(event) => setOwnerFullName(event.target.value)} placeholder="Full name" /></div><div className="platform-field"><label htmlFor="owner-company">Company</label><AppSelect id="owner-company" aria-label="Owner company" value={ownerCompanyId} options={[{ value: "", label: "Select company" }, ...companies.data.map((item) => ({ value: item.company_id, label: displayCompanyName(item) }))]} onChange={setOwnerCompanyId} /></div><button type="submit" className="platform-primary-button" disabled={!canAssign}>{assignOwner.isPending ? "Assigning…" : "Assign owner"}</button></form>{assignOwner.isError && <p className="platform-form-error" role="alert">Owner could not be assigned. {errorMessage(assignOwner.error, "Check the email and selected company.")}</p>}</> : <div className="platform-readonly-panel"><strong>Owner changes are paused</strong><span>The current workspace status is {STATUS_META[selected.status].label.toLowerCase()}. Existing ownership remains available for audit.</span></div>
                 ) : <div className="platform-empty platform-owner-locked"><strong>Owner assignment unlocks after a company is created</strong><p>There is no company to attach the tenant owner to yet.</p></div>}
               </div>
             </div>

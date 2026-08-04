@@ -4,6 +4,7 @@ import { isAxiosError } from "axios";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { AppSelect } from "@/shared/app-select";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { PermissionGate } from "@/shared/permission-guard";
@@ -194,12 +195,17 @@ export function TenantCompanyManagement() {
                     </label>
                     <label>
                       <span>Status</span>
-                      <select value={editingStatus} onChange={(event) => setEditingStatus(event.target.value)}>
-                        <option value="pending">Pending setup</option>
-                        <option value="active">Active</option>
-                        <option value="suspended">Suspended</option>
-                        <option value="archived">Archived</option>
-                      </select>
+                      <AppSelect
+                        aria-label="Status"
+                        value={editingStatus}
+                        options={[
+                          { value: "pending", label: "Pending setup" },
+                          { value: "active", label: "Active" },
+                          { value: "suspended", label: "Suspended" },
+                          { value: "archived", label: "Archived" },
+                        ]}
+                        onChange={setEditingStatus}
+                      />
                     </label>
                     <div className="company-edit-actions">
                       <button className="context-action" type="button" disabled={!editingName.trim() || update.isPending} onClick={() => update.mutate({ companyId: company.company_id, name: editingName, status: editingStatus })}>

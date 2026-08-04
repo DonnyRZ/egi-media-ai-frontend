@@ -136,20 +136,22 @@ test.describe("Display language settings", () => {
     await expect(page.getByText("Backend confirmed")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId("display-language-load-error")).toHaveCount(0);
 
-    await page.getByTestId("display-language-select").selectOption("en");
+    await page.getByTestId("display-language-select").click();
+    await page.getByRole("option", { name: "English", exact: true }).click();
     await page.getByTestId("display-language-save").click();
     await expect(page.getByText(/Display language preference saved/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Backend confirmed")).toBeVisible();
 
     await page.reload();
     await expect(page.getByText("Backend confirmed")).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByTestId("display-language-select")).toHaveValue("en");
+    await expect(page.getByTestId("display-language-select")).toContainText("English");
 
-    await page.getByTestId("display-language-select").selectOption("id");
+    await page.getByTestId("display-language-select").click();
+    await page.getByRole("option", { name: "Bahasa Indonesia", exact: true }).click();
     await page.getByTestId("display-language-save").click();
     await expect(page.getByText(/Display language preference saved/i)).toBeVisible({ timeout: 15_000 });
     await page.reload();
-    await expect(page.getByTestId("display-language-select")).toHaveValue("id");
+    await expect(page.getByTestId("display-language-select")).toContainText("Bahasa Indonesia");
     await expect(page.getByText("Backend confirmed")).toBeVisible();
     await expect(page.getByText("Resource was not found")).toHaveCount(0);
 

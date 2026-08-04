@@ -25,8 +25,9 @@ test.describe("platform owner-assignment handoff", () => {
     await expect(page.getByLabel("Owner email")).toHaveValue("owner@sprint4.test");
     await page.getByLabel("Owner full name").fill("Sprint4 Owner");
     await expect(page.getByLabel("Owner full name")).toHaveValue("Sprint4 Owner");
-    await page.getByLabel("Owner company").selectOption({ label: "Sprint4 Company" });
-    await expect(page.getByLabel("Owner company")).toHaveValue("company-4");
+    await page.getByRole("combobox", { name: "Owner company" }).click();
+    await page.getByRole("option", { name: "Sprint4 Company", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Owner company" })).toContainText("Sprint4 Company");
     await page.getByRole("button", { name: /Assign owner/i }).click();
 
     const next = page.getByTestId("provisioning-owner-next-steps");

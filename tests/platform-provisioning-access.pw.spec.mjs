@@ -76,7 +76,8 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     await expect(page.locator(".platform-company-list").getByText("Northstar Analytics", { exact: true })).toBeVisible();
     await page.getByLabel("Owner email").fill("owner@northstar.example");
     await page.getByLabel("Owner full name").fill("Northstar Owner");
-    await page.getByLabel("Owner company").selectOption("company-northstar");
+    await page.getByRole("combobox", { name: "Owner company" }).click();
+    await page.getByRole("option", { name: "Northstar Analytics", exact: true }).click();
     await expect(page.getByRole("button", { name: "Assign owner" })).toBeEnabled();
     await page.getByRole("button", { name: "Assign owner" }).click();
     await expect(page.getByTestId("provisioning-owner-next-steps")).toContainText("Tenant owner assigned");

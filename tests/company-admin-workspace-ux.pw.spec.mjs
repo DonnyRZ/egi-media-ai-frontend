@@ -78,13 +78,17 @@ test("company admin manages only members in the active company", async ({ page }
   await expect(page.getByText("other@example.com")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Companies", exact: true })).toHaveCount(0);
   await expect(page.getByText("Company access", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Role").locator("option")).toHaveCount(6);
-  const roleLabels = await page.getByLabel("Role").locator("option").allTextContents();
+  const roleSelect = page.getByRole("combobox", { name: "Role" });
+  await roleSelect.click();
+  await expect(page.getByRole("option")).toHaveCount(6);
+  const roleLabels = await page.getByRole("option").allTextContents();
   expect(roleLabels).toEqual(["Company admin", "Executive", "Executive viewer", "Analyst", "Reviewer", "Viewer"]);
+  await page.keyboard.press("Escape");
   await expect(page).toHaveScreenshot("company-admin-access-initial.png", { fullPage: true });
 
   await page.getByLabel("Work email").fill("reviewer@example.com");
-  await page.getByLabel("Role").selectOption("reviewer");
+  await roleSelect.click();
+  await page.getByRole("option", { name: "Reviewer", exact: true }).click();
   await page.getByRole("button", { name: "Invite member" }).click();
   await expect(page.getByRole("status")).toContainText("Invitation created");
   expect(requests[0]).toMatchObject({ method: "POST", endpoint: "/api/v1/company/memberships", body: { email: "reviewer@example.com", role: "reviewer" } });
@@ -95,7 +99,9 @@ test("company admin manages only members in the active company", async ({ page }
 
   const analystRow = page.locator(".access-member-item").filter({ hasText: "analyst@example.com" });
   await analystRow.getByRole("button", { name: "Edit" }).click();
-  await analystRow.getByRole("combobox", { name: "Edit role for analyst@example.com" }).selectOption("executive_viewer");
+  const editRoleSelect = analystRow.getByRole("combobox", { name: "Edit role for analyst@example.com" });
+  await editRoleSelect.click();
+  await analystRow.getByRole("option", { name: "Executive viewer", exact: true }).click();
   await analystRow.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("status")).toContainText("Access updated");
   expect(requests.find((request) => request.method === "PATCH")).toMatchObject({ endpoint: "/api/v1/company/memberships/membership-analyst", body: { role: "executive_viewer" } });

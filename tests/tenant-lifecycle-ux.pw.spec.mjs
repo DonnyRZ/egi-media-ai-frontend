@@ -43,10 +43,13 @@ test.describe("platform workspace lifecycle UX", () => {
     await expect(page.getByText("Provisioning paused", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Company name")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Archive workspace" })).toBeVisible();
-    await page.getByRole("tab", { name: /Suspended 1/ }).click();
+    const statusSelect = page.getByRole("combobox", { name: "Filter workspace status" });
+    await statusSelect.click();
+    await page.getByRole("option", { name: /Suspended 1/ }).click();
     await expect(page.getByText("Suspended", { exact: true }).first()).toBeVisible();
 
-    await page.getByRole("tab", { name: /All 1/ }).click();
+    await statusSelect.click();
+    await page.getByRole("option", { name: /All 1/ }).click();
     await page.getByRole("button", { name: "Archive workspace" }).click();
     const archiveDialog = page.getByRole("dialog", { name: "Archive this workspace?" });
     await archiveDialog.getByRole("textbox", { name: /Reason/ }).fill("Customer did not renew the service");

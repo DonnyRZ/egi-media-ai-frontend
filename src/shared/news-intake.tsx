@@ -6,6 +6,7 @@ import { RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Link } from "@/i18n/navigation";
+import { AppSelect } from "@/shared/app-select";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { EXTERNAL_INTAKE_MEDIA } from "@/shared/news-feed-channels";
@@ -305,21 +306,16 @@ function NewsIntakeBody() {
         {pullSource === "external" && (
           <label className="preference-field">
             <span>Media</span>
-            <select
+            <AppSelect
               data-testid="news-intake-external-media"
               value={externalMediaId}
+              options={EXTERNAL_INTAKE_MEDIA.map((media) => ({ value: media.id, label: media.label }))}
               disabled={!canTrigger || pullMutation.isPending}
-              onChange={(event) => {
-                setExternalMediaId(event.target.value);
+              onChange={(value) => {
+                setExternalMediaId(value);
                 setNotice(null);
               }}
-            >
-              {EXTERNAL_INTAKE_MEDIA.map((media) => (
-                <option key={media.id} value={media.id}>
-                  {media.label}
-                </option>
-              ))}
-            </select>
+            />
             <small>Pull from exactly one external media outlet. All 17 outlets are listed; choose one.</small>
           </label>
         )}
@@ -344,19 +340,20 @@ function NewsIntakeBody() {
         <div className="news-intake-pull-grid">
           <label className="preference-field">
             <span>Locale</span>
-            <select
+            <AppSelect
               data-testid="news-intake-locale"
               value={locale}
+              options={[
+                { value: "id", label: "Bahasa Indonesia (id)" },
+                { value: "en", label: "English (en)" },
+                { value: "uz", label: "Uzbek (uz)" },
+              ]}
               disabled={!canTrigger || pullMutation.isPending}
-              onChange={(event) => {
-                setLocale(event.target.value as IntakeLocale);
+              onChange={(value) => {
+                setLocale(value as IntakeLocale);
                 setNotice(null);
               }}
-            >
-              <option value="id">Bahasa Indonesia (id)</option>
-              <option value="en">English (en)</option>
-              <option value="uz">Uzbek (uz)</option>
-            </select>
+            />
           </label>
           <label className="preference-field">
             <span>Limit</span>

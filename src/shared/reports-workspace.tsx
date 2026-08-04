@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { useState, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { AppSelect } from "@/shared/app-select";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
@@ -116,20 +117,30 @@ function ReportsWorkspaceBody() {
       ) : (
         <div className="reports-workspace">
           <div className="issues-toolbar reports-toolbar">
-            <select value={reportType} onChange={(event) => setReportType(event.target.value as ReportTypeFilter)} aria-label="Filter reports by period">
-              <option value="all">All report periods</option>
-              <option value="harian">Daily</option>
-              <option value="mingguan">Weekly</option>
-              <option value="bulanan">Monthly</option>
-            </select>
-            <select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value as ReportStatusFilter)} aria-label="Filter reports by review status">
-              <option value="all">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="in_review">In review</option>
-              <option value="needs_review">Needs review</option>
-              <option value="approved">Approved</option>
-              <option value="shared">Shared</option>
-            </select>
+            <AppSelect
+              value={reportType}
+              aria-label="Filter reports by period"
+              options={[
+                { value: "all", label: "All report periods" },
+                { value: "harian", label: "Daily" },
+                { value: "mingguan", label: "Weekly" },
+                { value: "bulanan", label: "Monthly" },
+              ]}
+              onChange={(value) => setReportType(value as ReportTypeFilter)}
+            />
+            <AppSelect
+              value={reviewStatus}
+              aria-label="Filter reports by review status"
+              options={[
+                { value: "all", label: "All statuses" },
+                { value: "draft", label: "Draft" },
+                { value: "in_review", label: "In review" },
+                { value: "needs_review", label: "Needs review" },
+                { value: "approved", label: "Approved" },
+                { value: "shared", label: "Shared" },
+              ]}
+              onChange={(value) => setReviewStatus(value as ReportStatusFilter)}
+            />
           </div>
           {!query.data?.items.length ? (
             <div className="issues-empty">

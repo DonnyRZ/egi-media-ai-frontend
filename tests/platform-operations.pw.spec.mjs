@@ -34,7 +34,8 @@ test.describe("platform operations surfaces", () => {
     await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
     await expect(page.getByRole("cell", { name: "Platform.Tenants.Manage" })).toBeVisible();
     await expect(page.getByLabel("Platform audit events").getByText("Allowed")).toBeVisible();
-    await page.getByLabel("Outcome").selectOption("denied");
+    await page.getByRole("combobox", { name: "Outcome" }).click();
+    await page.getByRole("option", { name: "Denied", exact: true }).click();
     await expect(page.getByRole("heading", { name: "No audit events" })).toBeVisible();
     await expect(page).toHaveScreenshot("platform-audit-log-desktop.png", { fullPage: true });
   });

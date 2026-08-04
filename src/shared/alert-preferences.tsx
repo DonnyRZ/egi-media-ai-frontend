@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
+import { AppSelect } from "@/shared/app-select";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { PermissionGate } from "@/shared/permission-guard";
@@ -167,12 +168,17 @@ function AlertPreferencesBody() {
         </label>
         <label className="preference-field">
           <span>Timezone</span>
-          <select value={form.timezone} onChange={(event) => update("timezone", event.target.value)}>
-            <option value="Asia/Jakarta">Asia/Jakarta</option>
-            <option value="Asia/Singapore">Asia/Singapore</option>
-            <option value="Asia/Tashkent">Asia/Tashkent</option>
-            <option value="UTC">UTC</option>
-          </select>
+          <AppSelect
+            aria-label="Timezone"
+            value={form.timezone}
+            options={[
+              { value: "Asia/Jakarta", label: "Asia/Jakarta" },
+              { value: "Asia/Singapore", label: "Asia/Singapore" },
+              { value: "Asia/Tashkent", label: "Asia/Tashkent" },
+              { value: "UTC", label: "UTC" },
+            ]}
+            onChange={(value) => update("timezone", value)}
+          />
         </label>
         <div className="quiet-hours-row">
           <div>

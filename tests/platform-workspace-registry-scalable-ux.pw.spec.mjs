@@ -64,7 +64,9 @@ test.describe("scalable platform workspace registry UX", () => {
 
     await search.fill("");
     await expect(page.getByText("100 matching workspaces", { exact: true })).toBeVisible();
-    await page.getByRole("tab", { name: "Active 100", exact: true }).click();
+    const statusSelect = page.getByRole("combobox", { name: "Filter workspace status" });
+    await statusSelect.click();
+    await page.getByRole("option", { name: "Active 100", exact: true }).click();
     await expect(page.locator(".platform-tenant-row")).toHaveCount(20);
 
     await page.getByRole("checkbox", { name: "Select active workspaces on this page", exact: true }).click();
@@ -81,8 +83,8 @@ test.describe("scalable platform workspace registry UX", () => {
 
     await expect(page.getByRole("status").filter({ hasText: "100 workspaces are now suspended" })).toBeVisible();
     expect(bulkBody).toMatchObject({ status: "suspended", filter: { status: "active" }, reason: "Subscription ended for all evaluation workspaces" });
-    await expect(page.getByRole("tab", { name: "Suspended 100", exact: true })).toBeVisible();
-    await page.getByRole("tab", { name: "Suspended 100", exact: true }).click();
+    await statusSelect.click();
+    await page.getByRole("option", { name: "Suspended 100", exact: true }).click();
     await expect(page.locator(".platform-tenant-row")).toHaveCount(20);
 
     await page.getByRole("checkbox", { name: "Select suspended workspaces on this page", exact: true }).click();
@@ -99,8 +101,8 @@ test.describe("scalable platform workspace registry UX", () => {
 
     await expect(page.getByRole("status").filter({ hasText: "100 workspaces are now archived" })).toBeVisible();
     expect(bulkBody).toMatchObject({ status: "archived", filter: { status: "suspended" }, reason: "Customer workspaces archived after subscription closure" });
-    await expect(page.getByRole("tab", { name: "Archived 100", exact: true })).toBeVisible();
-    await page.getByRole("tab", { name: "Archived 100", exact: true }).click();
+    await statusSelect.click();
+    await page.getByRole("option", { name: "Archived 100", exact: true }).click();
     await expect(page.locator(".platform-tenant-row")).toHaveCount(20);
   });
 });

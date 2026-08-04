@@ -353,8 +353,10 @@ test.describe("News intake settings (mock)", () => {
     await page.goto("/id/settings/news-intake");
     await expect(page.getByTestId("news-intake-page")).toBeVisible({ timeout: 20_000 });
     await page.getByRole("tab", { name: "External media" }).click();
-    await page.getByTestId("news-intake-external-media").selectOption("tempo");
-    await page.getByTestId("news-intake-locale").selectOption("en");
+    await page.getByTestId("news-intake-external-media").click();
+    await page.getByRole("option", { name: "Tempo", exact: true }).click();
+    await page.getByTestId("news-intake-locale").click();
+    await page.getByRole("option", { name: "English (en)", exact: true }).click();
     await page.getByTestId("news-intake-limit").fill("5");
     await page.getByTestId("news-intake-pull-now").click();
     await expect(page.getByTestId("news-intake-notice")).toContainText(/Pull accepted/i);

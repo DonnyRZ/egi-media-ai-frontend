@@ -156,7 +156,8 @@ test.describe("executive role workspace contract", () => {
     await expect(page).toHaveScreenshot("executive-alert-preferences.png", { fullPage: true });
 
     await page.goto("/id/settings/display-language");
-    await page.getByTestId("display-language-select").selectOption("en");
+    await page.getByTestId("display-language-select").click();
+    await page.getByRole("option", { name: "English", exact: true }).click();
     await page.getByTestId("display-language-save").click();
     await expect(page.getByRole("status")).toContainText("saved for this company");
     await expect(page).toHaveScreenshot("executive-display-language.png", { fullPage: true });

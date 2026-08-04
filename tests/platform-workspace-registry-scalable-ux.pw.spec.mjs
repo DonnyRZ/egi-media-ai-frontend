@@ -84,5 +84,23 @@ test.describe("scalable platform workspace registry UX", () => {
     await expect(page.getByRole("tab", { name: "Suspended 100", exact: true })).toBeVisible();
     await page.getByRole("tab", { name: "Suspended 100", exact: true }).click();
     await expect(page.locator(".platform-tenant-row")).toHaveCount(20);
+
+    await page.getByRole("checkbox", { name: "Select suspended workspaces on this page", exact: true }).click();
+    await expect(page.getByText("20 suspended workspaces selected", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Select all 100 matching", exact: true }).click();
+    await expect(page.getByText("100 suspended workspaces selected", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Archive selected", exact: true }).click();
+    const archiveDialog = page.getByRole("dialog", { name: "Archive 100 workspaces?" });
+    await expect(archiveDialog).toBeVisible();
+    await expect(archiveDialog).toContainText("These workspaces will leave daily operations.");
+    await archiveDialog.getByRole("textbox").fill("Customer workspaces archived after subscription closure");
+    await archiveDialog.getByRole("button", { name: "Archive 100 workspaces", exact: true }).click();
+
+    await expect(page.getByRole("status").filter({ hasText: "100 workspaces are now archived" })).toBeVisible();
+    expect(bulkBody).toMatchObject({ status: "archived", filter: { status: "suspended" }, reason: "Customer workspaces archived after subscription closure" });
+    await expect(page.getByRole("tab", { name: "Archived 100", exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "Archived 100", exact: true }).click();
+    await expect(page.locator(".platform-tenant-row")).toHaveCount(20);
   });
 });

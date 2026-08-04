@@ -154,16 +154,16 @@ export function PlatformProvisioning() {
   const [createTenantOpen, setCreateTenantOpen] = useState(false);
   const [selected, setSelected] = useState<Tenant | null>(() => readPersistedTenant());
   const [revealSelected, setRevealSelected] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [searchInput, setSearchInput] = useState("");
   const searchQuery = useDeferredValue(searchInput.trim());
   const [page, setPage] = useState(1);
   const [rowActionTenantId, setRowActionTenantId] = useState<string | null>(null);
   const [selectedTenantIds, setSelectedTenantIds] = useState<string[]>([]);
   const [selectAllMatching, setSelectAllMatching] = useState(false);
-  const [bulkSuspendOpen, setBulkSuspendOpen] = useState(false);
-  const [bulkSuspendReason, setBulkSuspendReason] = useState("");
-  const [bulkSuspendError, setBulkSuspendError] = useState("");
+  const [bulkLifecycleOpen, setBulkLifecycleOpen] = useState(false);
+  const [bulkLifecycleReason, setBulkLifecycleReason] = useState("");
+  const [bulkLifecycleError, setBulkLifecycleError] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerCompanyId, setOwnerCompanyId] = useState("");
   const [ownerFullName, setOwnerFullName] = useState("");
@@ -256,10 +256,16 @@ export function PlatformProvisioning() {
 
   const filteredCounts = tenants.data?.meta?.counts;
   const totalPages = Math.max(1, Math.ceil((tenants.data?.meta?.total || 0) / TENANT_PAGE_SIZE));
-  const activeVisible = visibleTenants.filter((tenant) => tenant.status === "active");
-  const selectedVisibleCount = activeVisible.filter((tenant) => selectedTenantIds.includes(tenant.tenant_id)).length;
-  const bulkSelectedCount = selectAllMatching ? (filteredCounts?.active || tenants.data?.meta?.total || 0) : selectedTenantIds.length;
-  const canBulkSuspend = statusFilter === "active" && bulkSelectedCount > 0;
+  const bulkSourceStatus: Extract<TenantStatus, "active" | "pending" | "suspended"> | null = statusFilter === "active" || statusFilter === "pending" || statusFilter === "suspended" ? statusFilter : null;
+  const bulkTargetStatus: TenantStatus | null = bulkSourceStatus === "active" ? "suspended" : bulkSourceStatus === "pending" || bulkSourceStatus === "suspended" ? "archived" : null;
+  const bulkEligibleVisible = bulkSourceStatus ? visibleTenants.filter((tenant) => tenant.status === bulkSourceStatus) : [];
+  const selectedVisibleCount = bulkEligibleVisible.filter((tenant) => selectedTenantIds.includes(tenant.tenant_id)).length;
+  const bulkSelectedCount = selectAllMatching ? (bulkSourceStatus ? (filteredCounts?.[bulkSourceStatus] || tenants.data?.meta?.total || 0) : 0) : selectedTenantIds.length;
+  const canBulkLifecycle = Boolean(bulkSourceStatus && bulkTargetStatus && bulkSelectedCount > 0);
+  const bulkActionLabel = bulkTargetStatus === "archived" ? "Archive" : "Suspend";
+  const hasAnyWorkspace = (filteredCounts?.all ?? tenants.data?.meta?.total ?? 0) > 0;
+  const emptyStateHeading = !searchQuery && !hasAnyWorkspace ? "No customer workspaces yet" : !searchQuery && statusFilter !== "all" ? `No ${STATUS_META[statusFilter].label.toLowerCase()} workspaces` : "No matching workspaces";
+  const emptyStateDescription = !searchQuery && !hasAnyWorkspace ? "Create the first workspace to begin provisioning a company and its owner." : "Adjust the search or status filter.";
 
   const selectedCanProvision = Boolean(selected && (selected.status === "active" || selected.status === "pending"));
   const ownerMembership = memberships.data?.find((item) => item.role === "tenant_owner" && item.status === "active") || memberships.data?.find((item) => item.role === "tenant_owner" && item.status === "invited");
@@ -318,22 +324,22 @@ export function PlatformProvisioning() {
     },
   });
 
-  const bulkSuspendMutation = useMutation({
+  const bulkLifecycleMutation = useMutation({
     mutationFn: async () => {
       const body = selectAllMatching
-        ? { status: "suspended", reason: bulkSuspendReason.trim(), filter: { status: "active", ...(searchQuery ? { q: searchQuery } : {}) } }
-        : { status: "suspended", reason: bulkSuspendReason.trim(), tenant_ids: selectedTenantIds };
+        ? { status: bulkTargetStatus, reason: bulkLifecycleReason.trim(), filter: { status: bulkSourceStatus, ...(searchQuery ? { q: searchQuery } : {}) } }
+        : { status: bulkTargetStatus, reason: bulkLifecycleReason.trim(), tenant_ids: selectedTenantIds };
       const response = await axiosClient.post<BulkLifecycleResponse>(API_ENDPOINTS.platformTenantsBulkLifecycle, body, { headers: { "Idempotency-Key": key() } });
       return response.data;
     },
     onSuccess: (result) => {
       const updatedCount = result.data?.updated_count || bulkSelectedCount;
-      setNotice(`${updatedCount} workspace${updatedCount === 1 ? " is" : "s are"} now suspended.`);
+      setNotice(`${updatedCount} workspace${updatedCount === 1 ? " is" : "s are"} now ${STATUS_META[bulkTargetStatus || "archived"].label.toLowerCase()}.`);
       setSelectedTenantIds([]);
       setSelectAllMatching(false);
-      setBulkSuspendOpen(false);
-      setBulkSuspendReason("");
-      setBulkSuspendError("");
+      setBulkLifecycleOpen(false);
+      setBulkLifecycleReason("");
+      setBulkLifecycleError("");
       void client.invalidateQueries({ queryKey: ["platform-tenants"] });
     },
   });
@@ -369,27 +375,27 @@ export function PlatformProvisioning() {
     setSelectedTenantIds((current) => current.includes(tenantId) ? current.filter((id) => id !== tenantId) : [...current, tenantId]);
   }
 
-  function toggleVisibleActiveSelection() {
-    const allVisibleSelected = activeVisible.length > 0 && activeVisible.every((tenant) => selectedTenantIds.includes(tenant.tenant_id));
+  function toggleVisibleLifecycleSelection() {
+    const allVisibleSelected = bulkEligibleVisible.length > 0 && bulkEligibleVisible.every((tenant) => selectedTenantIds.includes(tenant.tenant_id));
     setSelectAllMatching(false);
     setSelectedTenantIds((current) => allVisibleSelected
-      ? current.filter((id) => !activeVisible.some((tenant) => tenant.tenant_id === id))
-      : [...new Set([...current, ...activeVisible.map((tenant) => tenant.tenant_id)])]);
+      ? current.filter((id) => !bulkEligibleVisible.some((tenant) => tenant.tenant_id === id))
+      : [...new Set([...current, ...bulkEligibleVisible.map((tenant) => tenant.tenant_id)])]);
   }
 
-  function beginBulkSuspend() {
-    setBulkSuspendError("");
-    setBulkSuspendReason("");
-    setBulkSuspendOpen(true);
+  function beginBulkLifecycle() {
+    setBulkLifecycleError("");
+    setBulkLifecycleReason("");
+    setBulkLifecycleOpen(true);
   }
 
-  function submitBulkSuspend() {
-    if (!bulkSuspendReason.trim()) {
-      setBulkSuspendError("Add a reason so every lifecycle change is recorded clearly.");
+  function submitBulkLifecycle() {
+    if (!bulkLifecycleReason.trim()) {
+      setBulkLifecycleError("Add a reason so every lifecycle change is recorded clearly.");
       return;
     }
-    setBulkSuspendError("");
-    bulkSuspendMutation.mutate();
+    setBulkLifecycleError("");
+    bulkLifecycleMutation.mutate();
   }
 
   const closeLifecycleDialog = useCallback(() => {
@@ -409,16 +415,16 @@ export function PlatformProvisioning() {
   }, [closeLifecycleDialog, lifecycleAction]);
 
   useEffect(() => {
-    if (!bulkSuspendOpen) return;
+    if (!bulkLifecycleOpen) return;
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !bulkSuspendMutation.isPending) {
-        setBulkSuspendOpen(false);
-        setBulkSuspendError("");
+      if (event.key === "Escape" && !bulkLifecycleMutation.isPending) {
+        setBulkLifecycleOpen(false);
+        setBulkLifecycleError("");
       }
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [bulkSuspendMutation.isPending, bulkSuspendOpen]);
+  }, [bulkLifecycleMutation.isPending, bulkLifecycleOpen]);
 
   function submitLifecycle() {
     if (!selected || !lifecycleAction) return;
@@ -462,7 +468,7 @@ export function PlatformProvisioning() {
           </div>
 
           <div className="platform-registry-toolbar">
-            <div><span className="platform-toolbar-label">Filter by status</span><span className="platform-toolbar-hint">Lifecycle state is visible before you open a workspace.</span></div>
+            <div><span className="platform-toolbar-label">Filter by status</span><span className="platform-toolbar-hint">Active first; archived when needed.</span></div>
             <div className="platform-status-filters" role="tablist" aria-label="Workspace status filter">
               {STATUS_FILTERS.map((filter) => {
                 const count = filter.value === "all"
@@ -488,15 +494,15 @@ export function PlatformProvisioning() {
 
           {tenants.isLoading && <div className="platform-empty"><strong>Loading workspaces…</strong><p>Reading the workspace registry.</p></div>}
           {tenants.error && <div className="platform-empty" role="alert"><strong>Workspaces could not be loaded</strong><p>The control plane did not return the tenant registry.</p><button type="button" className="platform-secondary-button" onClick={() => void tenants.refetch()}>Retry</button></div>}
-          {!tenants.isLoading && !tenants.error && tenants.data?.meta.total === 0 && <div className="platform-empty"><strong>{searchQuery || statusFilter !== "all" ? "No matching workspaces" : "No customer workspaces yet"}</strong><p>{searchQuery || statusFilter !== "all" ? "Adjust the search or status filter." : "Create the first workspace to begin provisioning a company and its owner."}</p></div>}
-          {canBulkSuspend && <div className="platform-bulk-bar" role="region" aria-label="Bulk workspace actions"><div><strong>{bulkSelectedCount} active workspace{bulkSelectedCount === 1 ? "" : "s"} selected</strong><span>{selectAllMatching ? "This action applies to every active workspace matching the current filter." : "Suspend selected workspaces in one audited operation."}</span></div><button type="button" className="platform-danger-button" onClick={beginBulkSuspend}>Suspend selected</button></div>}
-          {statusFilter === "active" && activeVisible.length > 0 && selectedVisibleCount === activeVisible.length && !selectAllMatching && (tenants.data?.meta.total || 0) > activeVisible.length && <div className="platform-select-all-banner" role="status"><span>All active workspaces on this page are selected.</span><button type="button" onClick={() => setSelectAllMatching(true)}>Select all {tenants.data?.meta.total} matching</button></div>}
-          {statusFilter === "active" && activeVisible.length > 0 && <label className="platform-page-selection"><input type="checkbox" aria-label="Select active workspaces on this page" checked={selectAllMatching || selectedVisibleCount === activeVisible.length} onChange={toggleVisibleActiveSelection} /><span>Select active workspaces on this page</span><small>{activeVisible.length} shown</small></label>}
+          {!tenants.isLoading && !tenants.error && tenants.data?.meta.total === 0 && <div className="platform-empty"><strong>{emptyStateHeading}</strong><p>{emptyStateDescription}</p></div>}
+          {canBulkLifecycle && <div className="platform-bulk-bar" role="region" aria-label="Bulk workspace actions"><div><strong>{bulkSelectedCount} {bulkSourceStatus ? STATUS_META[bulkSourceStatus].label.toLowerCase() : ""} workspace{bulkSelectedCount === 1 ? "" : "s"} selected</strong><span>{selectAllMatching ? `This action applies to every ${bulkSourceStatus ? STATUS_META[bulkSourceStatus].label.toLowerCase() : "eligible"} workspace matching the current filter.` : `${bulkActionLabel} selected workspaces in one audited operation.`}</span></div><button type="button" className="platform-danger-button" onClick={beginBulkLifecycle}>{bulkActionLabel} selected</button></div>}
+          {bulkSourceStatus && bulkEligibleVisible.length > 0 && selectedVisibleCount === bulkEligibleVisible.length && !selectAllMatching && (tenants.data?.meta.total || 0) > bulkEligibleVisible.length && <div className="platform-select-all-banner" role="status"><span>All {STATUS_META[bulkSourceStatus].label.toLowerCase()} workspaces on this page are selected.</span><button type="button" onClick={() => setSelectAllMatching(true)}>Select all {tenants.data?.meta.total} matching</button></div>}
+          {bulkSourceStatus && bulkEligibleVisible.length > 0 && <label className="platform-page-selection"><input type="checkbox" aria-label={`Select ${STATUS_META[bulkSourceStatus].label.toLowerCase()} workspaces on this page`} checked={selectAllMatching || selectedVisibleCount === bulkEligibleVisible.length} onChange={toggleVisibleLifecycleSelection} /><span>Select {STATUS_META[bulkSourceStatus].label.toLowerCase()} workspaces on this page</span><small>{bulkEligibleVisible.length} shown</small></label>}
           {visibleTenants.length > 0 && (
             <div className="platform-tenant-list" aria-label="Customer workspaces" id="workspace-registry-list">
               {visibleTenants.map((tenant) => (
                 <article className={`platform-tenant-row ${selected?.tenant_id === tenant.tenant_id ? "is-selected" : ""}`} key={tenant.tenant_id}>
-                  {statusFilter === "active" && <input className="platform-tenant-checkbox" type="checkbox" aria-label={`Select ${tenant.name}`} checked={selectedTenantIds.includes(tenant.tenant_id) || selectAllMatching} onChange={() => toggleTenantSelection(tenant.tenant_id)} />}
+                  {bulkSourceStatus && tenant.status === bulkSourceStatus && <input className="platform-tenant-checkbox" type="checkbox" aria-label={`Select ${tenant.name}`} checked={selectedTenantIds.includes(tenant.tenant_id) || selectAllMatching} onChange={() => toggleTenantSelection(tenant.tenant_id)} />}
                   <div className="platform-tenant-meta"><strong>{tenant.name}</strong><small>{tenant.tenant_id}</small></div>
                   <StatusBadge status={tenant.status} />
                   <time className="platform-tenant-updated" dateTime={tenant.updated_at}>{formatDate(tenant.updated_at)}</time>
@@ -551,7 +557,7 @@ export function PlatformProvisioning() {
 
         <section className="platform-section platform-capabilities" aria-labelledby="operations-heading"><div className="platform-section-header"><div><p className="platform-section-kicker">Platform operations</p><h2 id="operations-heading">Control plane visibility</h2><p>Review service readiness and access history without entering a customer workspace.</p></div></div><div className="platform-capability-grid"><SoftNavLink href="/settings/platform/health" className="platform-capability-card platform-capability-link"><span className="platform-capability-label">Live checks</span><strong>System health</strong><p>Check service, persistence, automation, and provider readiness.</p><span className="platform-capability-action">Open health →</span></SoftNavLink><SoftNavLink href="/settings/platform/audit-log" className="platform-capability-card platform-capability-link"><span className="platform-capability-label">Accountability</span><strong>Audit log</strong><p>Review access decisions with actor, scope, action, and outcome.</p><span className="platform-capability-action">Open audit log →</span></SoftNavLink></div></section>
 
-        {bulkSuspendOpen && <div className="platform-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !bulkSuspendMutation.isPending) setBulkSuspendOpen(false); }}><section className="platform-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-suspend-title" aria-describedby="bulk-suspend-description"><div className="platform-modal-heading"><div className="platform-modal-icon is-danger" aria-hidden="true">!</div><div><p className="platform-eyebrow">Bulk workspace lifecycle</p><h2 id="bulk-suspend-title">Suspend {bulkSelectedCount} workspaces?</h2><p id="bulk-suspend-description">Customer sign-in and intake will pause. Data and audit history will be retained. The operation is applied atomically.</p></div></div><div className="platform-modal-workspace"><strong>{selectAllMatching ? "All active workspaces matching the current filter" : `${bulkSelectedCount} selected workspaces`}</strong><span className="platform-tenant-status is-active"><i aria-hidden="true" />Active only</span></div><form onSubmit={(event) => { event.preventDefault(); submitBulkSuspend(); }}><label className="platform-modal-field" htmlFor="bulk-suspend-reason"><span>Reason <em>Required</em></span><textarea id="bulk-suspend-reason" value={bulkSuspendReason} onChange={(event) => setBulkSuspendReason(event.target.value)} placeholder="For example: subscription ended or payment is overdue" maxLength={500} autoFocus /><small>{bulkSuspendReason.length}/500</small></label>{(bulkSuspendError || bulkSuspendMutation.isError) && <p className="platform-form-error" role="alert">{bulkSuspendError || errorMessage(bulkSuspendMutation.error, "Bulk suspension could not be completed.")}</p>}<div className="platform-modal-actions"><button type="button" className="platform-secondary-button" onClick={() => setBulkSuspendOpen(false)} disabled={bulkSuspendMutation.isPending}>Cancel</button><button type="submit" className="platform-primary-button is-danger" disabled={bulkSuspendMutation.isPending}>{bulkSuspendMutation.isPending ? "Suspending…" : `Suspend ${bulkSelectedCount} workspaces`}</button></div></form></section></div>}
+        {bulkLifecycleOpen && <div className="platform-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !bulkLifecycleMutation.isPending) setBulkLifecycleOpen(false); }}><section className="platform-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-lifecycle-title" aria-describedby="bulk-lifecycle-description"><div className="platform-modal-heading"><div className="platform-modal-icon is-danger" aria-hidden="true">!</div><div><p className="platform-eyebrow">Bulk workspace lifecycle</p><h2 id="bulk-lifecycle-title">{bulkActionLabel} {bulkSelectedCount} workspaces?</h2><p id="bulk-lifecycle-description">{bulkTargetStatus === "archived" ? "These workspaces will leave daily operations. Data and audit history will be retained." : "Customer sign-in and intake will pause. Data and audit history will be retained."} The operation is applied atomically.</p></div></div><div className="platform-modal-workspace"><strong>{selectAllMatching ? `All ${STATUS_META[bulkSourceStatus || "active"].label.toLowerCase()} workspaces matching the current filter` : `${bulkSelectedCount} selected workspaces`}</strong><StatusBadge status={bulkSourceStatus || "active"} /></div><form onSubmit={(event) => { event.preventDefault(); submitBulkLifecycle(); }}><label className="platform-modal-field" htmlFor="bulk-lifecycle-reason"><span>Reason <em>Required</em></span><textarea id="bulk-lifecycle-reason" value={bulkLifecycleReason} onChange={(event) => setBulkLifecycleReason(event.target.value)} placeholder="For example: subscription ended or payment is overdue" maxLength={500} autoFocus /><small>{bulkLifecycleReason.length}/500</small></label>{(bulkLifecycleError || bulkLifecycleMutation.isError) && <p className="platform-form-error" role="alert">{bulkLifecycleError || errorMessage(bulkLifecycleMutation.error, `Bulk ${bulkActionLabel.toLowerCase()} could not be completed.`)}</p>}<div className="platform-modal-actions"><button type="button" className="platform-secondary-button" onClick={() => setBulkLifecycleOpen(false)} disabled={bulkLifecycleMutation.isPending}>Cancel</button><button type="submit" className="platform-primary-button is-danger" disabled={bulkLifecycleMutation.isPending}>{bulkLifecycleMutation.isPending ? (bulkTargetStatus === "archived" ? "Archiving…" : "Suspending…") : `${bulkActionLabel} ${bulkSelectedCount} workspaces`}</button></div></form></section></div>}
 
         {lifecycleAction && selected && <div className="platform-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeLifecycleDialog(); }}><section className="platform-modal" role="dialog" aria-modal="true" aria-labelledby="lifecycle-dialog-title" aria-describedby="lifecycle-dialog-description"><div className="platform-modal-heading"><div className={`platform-modal-icon is-${ACTION_META[lifecycleAction].intent}`} aria-hidden="true">{ACTION_META[lifecycleAction].intent === "danger" ? "!" : "✓"}</div><div><p className="platform-eyebrow">Workspace lifecycle</p><h2 id="lifecycle-dialog-title">{ACTION_META[lifecycleAction].title}</h2><p id="lifecycle-dialog-description">{ACTION_META[lifecycleAction].description}</p></div></div><div className="platform-modal-workspace"><strong>{selected.name}</strong><StatusBadge status={selected.status} /></div><form onSubmit={(event) => { event.preventDefault(); submitLifecycle(); }}>{ACTION_META[lifecycleAction].requiresReason && <label className="platform-modal-field" htmlFor="lifecycle-reason"><span>Reason <em>Required</em></span><textarea id="lifecycle-reason" value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} placeholder="For example: subscription ended or payment is overdue" maxLength={500} autoFocus /><small>{lifecycleReason.length}/500</small></label>}{(lifecycleError || lifecycleMutation.isError) && <p className="platform-form-error" role="alert">{lifecycleError || errorMessage(lifecycleMutation.error, "Workspace status could not be updated.")}</p>}<div className="platform-modal-actions"><button type="button" className="platform-secondary-button" onClick={closeLifecycleDialog} disabled={lifecycleMutation.isPending}>Cancel</button><button type="submit" autoFocus={!ACTION_META[lifecycleAction].requiresReason} className={`platform-primary-button ${ACTION_META[lifecycleAction].intent === "danger" ? "is-danger" : ""}`} disabled={lifecycleMutation.isPending}>{lifecycleMutation.isPending ? "Updating…" : ACTION_META[lifecycleAction].label}</button></div></form></section></div>}
       </div>

@@ -18,7 +18,7 @@ test.describe("platform control-plane UX", () => {
   test("the platform console exposes workspace provisioning, not customer administration", async ({ page }) => {
     await stubPlatform(page);
     await loginAsPlatformSuperadmin(page);
-    await expect(page.getByRole("heading", { name: "Customer provisioning" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Workspace registry" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Platform overview" })).toBeVisible();
     await expect(page.getByRole("link", { name: /^Settings$/i })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /^Access$/i })).toHaveCount(0);
@@ -36,7 +36,7 @@ test.describe("platform control-plane UX", () => {
     for (const path of ["/id/settings/companies", "/id/settings/access", "/id/settings/company-context", "/id/settings/news-intake"]) {
       await page.goto(path);
       await expect(page).toHaveURL(/\/id\/settings\/platform\/?$/, { timeout: 15_000 });
-      await expect(page.getByRole("heading", { name: "Customer provisioning" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Workspace registry" })).toBeVisible();
     }
   });
 });

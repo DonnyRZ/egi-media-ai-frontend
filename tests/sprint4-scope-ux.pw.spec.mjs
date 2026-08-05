@@ -19,8 +19,8 @@ test.describe("platform owner-assignment handoff", () => {
     });
 
     await loginAsPlatformSuperadmin(page);
-    await page.locator(".access-row").filter({ hasText: "Sprint4 Workspace" }).getByRole("button", { name: "Select" }).click();
-    await expect(page.getByText("Workspace provisioning steps")).toBeVisible();
+    await page.locator(".platform-tenant-row").filter({ hasText: "Sprint4 Workspace" }).getByRole("button", { name: "Open workspace" }).click();
+    await expect(page.getByText("Selected workspace", { exact: true })).toBeVisible();
     await page.getByLabel("Owner email").fill("owner@sprint4.test");
     await expect(page.getByLabel("Owner email")).toHaveValue("owner@sprint4.test");
     await page.getByLabel("Owner full name").fill("Sprint4 Owner");
@@ -36,6 +36,6 @@ test.describe("platform owner-assignment handoff", () => {
     await expect(next).toContainText("owner@sprint4.test");
     await expect(next).toContainText(/after signing up with this exact email/i);
     await expect(next.getByRole("link", { name: /Open signup page/i })).toBeVisible();
-    await expect(page.getByText("Unscoped platform")).toBeVisible();
+    await expect(page.getByText("Platform control plane")).toBeVisible();
   });
 });

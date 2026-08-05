@@ -17,7 +17,7 @@ import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { PermissionGate } from "@/shared/permission-guard";
 import { useSessionStore } from "@/shared/session-store";
 import type { ApiSuccessResponse, LanguagePreferenceDto } from "@/shared/types/api.types";
-import { StandardState } from "@/shared/ux-state";
+import { BusyLabel, InlineLoading, StandardState } from "@/shared/ux-state";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 
 function createIdempotencyKey() {
@@ -131,6 +131,7 @@ function DisplayLanguageBody() {
         <strong>{activeCompanyLabel(authorizedCompanies, companyId)}</strong>
         <small>{actor?.email ?? "Current authenticated actor"}</small>
       </div>
+      {loadPending && <div className="preference-loading-banner" aria-live="polite"><InlineLoading label="Loading saved preference..." /></div>}
       {loadFailed && (
         <div className="preference-notice error" role="alert" data-testid="display-language-load-error">
           {languagePreferenceError(preferenceQuery.error)}
@@ -138,12 +139,15 @@ function DisplayLanguageBody() {
             type="button"
             className="context-action"
             data-testid="display-language-retry"
+            aria-busy={preferenceQuery.isFetching}
+            data-loading={preferenceQuery.isFetching}
+            disabled={preferenceQuery.isFetching}
             onClick={() => {
               setNotice(null);
               void preferenceQuery.refetch();
             }}
           >
-            Retry
+            {preferenceQuery.isFetching ? <BusyLabel>Retrying…</BusyLabel> : "Retry"}
           </button>
         </div>
       )}
@@ -178,6 +182,8 @@ function DisplayLanguageBody() {
           className="context-action"
           data-testid="display-language-save"
           disabled={mutation.isPending || !companyId || !isDirty || loadFailed || loadPending}
+          aria-busy={mutation.isPending}
+          data-loading={mutation.isPending}
           onClick={() => {
             if (!companyId) return;
             mutation.mutate();

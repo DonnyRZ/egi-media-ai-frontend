@@ -72,7 +72,7 @@ test("company admin manages only members in the active company", async ({ page }
   });
 
   await page.goto("/id/settings/access");
-  await expect(page.getByRole("main").getByRole("heading", { name: "Access", exact: true })).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("heading", { name: "Access", exact: true })).toBeVisible();
   await expect(page.getByText("Company administration")).toBeVisible();
   await expect(page.getByRole("main").getByText("Company A", { exact: true })).toBeVisible();
   await expect(page.getByText("other@example.com")).toHaveCount(0);

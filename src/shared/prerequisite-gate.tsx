@@ -2,7 +2,10 @@
 
 import type { ReactNode } from "react";
 
+import { Building2, CircleAlert } from "lucide-react";
+
 import { SoftNavLink } from "@/shared/soft-nav";
+import { useSessionStore } from "@/shared/session-store";
 import type { ScopePrerequisite } from "@/shared/workspace-scope";
 
 export type PrerequisiteGateProps = {
@@ -17,13 +20,14 @@ export type PrerequisiteGateProps = {
 
 const COPY: Record<
   ScopePrerequisite,
-  { eyebrow: string; title: string; reason: string; nextStep: string; mark: string }
+  { eyebrow: string; title: string; reason: string; nextStep: string; mark: string; icon: typeof Building2 }
 > = {
   tenant: {
     eyebrow: "Workspace scope",
     title: "Tenant required",
     reason: "This surface needs a customer tenant before it can run. Your session has no tenant yet.",
     nextStep: "Open Platform provisioning to create a tenant (and company), then return here.",
+    icon: Building2,
     mark: "⊟",
   },
   company: {
@@ -31,6 +35,7 @@ const COPY: Record<
     title: "Company scope required",
     reason: "An active company is required before this surface can load tenant-scoped data.",
     nextStep: "Pick a company in the header switcher. If none exist, provision one under Platform.",
+    icon: CircleAlert,
     mark: "◎",
   },
 };
@@ -43,8 +48,14 @@ export function PrerequisiteGate({ missing, title, reason, nextStep, children }:
   const list = Array.isArray(missing) ? missing : [missing];
   const primary = list[0] ?? "tenant";
   const copy = COPY[primary];
-  const needsProvisioning = list.includes("tenant") || list.includes("company");
+  const permissions = useSessionStore((state) => state.permissions);
+  const canOpenProvisioning = permissions.includes("platform.tenants.manage");
+  const needsProvisioning = canOpenProvisioning && (list.includes("tenant") || list.includes("company"));
   const needsCompanyPicker = list.includes("company");
+  const customerNextStep = primary === "tenant"
+    ? "Ask a tenant owner or platform administrator to grant this account workspace access."
+    : "Select a company from the header, or ask a tenant administrator to grant this account company access.";
+  const Mark = copy.icon;
 
   return (
     <div
@@ -54,13 +65,13 @@ export function PrerequisiteGate({ missing, title, reason, nextStep, children }:
       data-missing={list.join(",")}
     >
       <div className="standard-state-mark" aria-hidden="true">
-        {copy.mark}
+        <Mark size={22} strokeWidth={2} />
       </div>
       <span className="standard-state-eyebrow">{copy.eyebrow}</span>
       <h2>{title ?? copy.title}</h2>
       <p data-testid="prerequisite-gate-reason">{reason ?? copy.reason}</p>
       <p className="prerequisite-gate-next" data-testid="prerequisite-gate-next">
-        {nextStep ?? copy.nextStep}
+        {canOpenProvisioning ? (nextStep ?? copy.nextStep) : customerNextStep}
       </p>
       <div className="prerequisite-gate-actions">
         {needsProvisioning && (

@@ -225,8 +225,9 @@ export interface NewsIntakeRunsPageDto {
 
 export interface SavedIssueDto { saved_id: string; issue_id: string; saved_at: string; issue: IssueCardDto; }
 export interface SavedIssueListDto { items: SavedIssueDto[]; meta: PaginationMeta; }
-export interface InboxEmailDto { email_id: string; issue_id: string | null; development_id: string | null; channel: "langsung" | "ringkasan" | string; status: string; reason_code: string | null; read: boolean; created_at: string; }
-export interface InboxEmailListDto { items: InboxEmailDto[]; meta: PaginationMeta; }
+export interface InboxAlertContentDto { type: "direct" | "digest" | string; new_development: string | null; short_impact: string | null; source_claim_ids: string[]; generated_at: string | null; }
+export interface InboxEmailDto { email_id: string; issue_id: string | null; development_id: string | null; channel: "langsung" | "ringkasan" | string; status: string; reason_code: string | null; read: boolean; created_at: string; alert_content?: InboxAlertContentDto | null; }
+export interface InboxEmailListDto { items: InboxEmailDto[]; meta: PaginationMeta & { unread_by_channel?: Record<string, number> }; }
 export type ReportReviewStatus = "draft" | "in_review" | "approved" | "shared" | "needs_review";
 export interface ReportDto { report_id: string; report_type: "harian" | "mingguan" | "bulanan"; period_start: string; period_end: string; timezone: string; context_version: number; metrics: Record<string, unknown>; selected_issue_pack: unknown[]; review_status: ReportReviewStatus; version: number; created_at: string; updated_at: string; }
 export interface ReportListDto { items: ReportDto[]; meta: PaginationMeta; }

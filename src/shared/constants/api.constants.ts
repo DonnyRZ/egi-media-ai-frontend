@@ -43,6 +43,7 @@ export const API_ENDPOINTS = {
   newsIntakeRuns: "/api/v1/news-intake/runs",
   reports: "/api/v1/reports",
   reportById: (reportId: string) => `/api/v1/reports/${reportId}`,
+  reportPdf: (reportId: string) => `/api/v1/reports/${reportId}/pdf`,
   reportReview: (reportId: string) => `/api/v1/reports/${reportId}/review`,
   reportApprove: (reportId: string) => `/api/v1/reports/${reportId}/approve`,
   reportShare: (reportId: string) => `/api/v1/reports/${reportId}/share`,

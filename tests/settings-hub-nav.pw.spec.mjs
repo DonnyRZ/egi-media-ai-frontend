@@ -14,14 +14,14 @@ test.describe("platform navigation", () => {
     await stubTenants(page, []);
     await loginAsPlatformSuperadmin(page);
     await expect(page.getByRole("heading", { name: "Platform overview" }).first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Customer provisioning" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Workspace registry" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Platform overview" })).toHaveAttribute("href", "/id/settings/platform");
   });
 
   test("tenant registry state is truthful when the control plane has no workspaces", async ({ page }) => {
     await stubTenants(page, []);
     await loginAsPlatformSuperadmin(page);
-    await expect(page.getByText("Create the first workspace to begin provisioning a company and its owner.")).toBeVisible();
+    await expect(page.getByText("No customer workspaces yet")).toBeVisible();
     await expect(page.getByText("No customer workspaces have been created yet.")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New workspace" })).toBeVisible();
   });

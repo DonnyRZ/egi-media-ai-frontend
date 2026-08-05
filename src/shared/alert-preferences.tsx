@@ -13,7 +13,7 @@ import { useSessionStore } from "@/shared/session-store";
 import { activeCompanyLabel } from "@/shared/company-options";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import type { AlertPreferenceDto, ApiSuccessResponse } from "@/shared/types/api.types";
-import { StandardState } from "@/shared/ux-state";
+import { BusyLabel, CollectionLoading, StandardState } from "@/shared/ux-state";
 
 type QuietHours = { start: string; end: string } | null;
 type PreferenceForm = Omit<AlertPreferenceDto, "quiet_hours"> & { quiet_hours: QuietHours; quiet_hours_enabled: boolean };
@@ -122,7 +122,7 @@ function AlertPreferencesBody() {
   }
 
   return (
-    <div className="preference-page">
+    <div className="preference-page" aria-busy={preferenceQuery.isPending}>
       <div className="preference-heading">
         <p>Choose how the backend may evaluate direct high alerts and daily digest eligibility.</p>
         <span className={`preference-state ${confirmed && !isDirty ? "is-confirmed" : "is-closed"}`}>
@@ -135,6 +135,16 @@ function AlertPreferencesBody() {
         <strong>{activeCompanyLabel(authorizedCompanies, companyId)}</strong>
         <small>{actor?.email ?? "Current authenticated actor"}</small>
       </div>
+      {preferenceQuery.isPending ? (
+        <CollectionLoading label="Loading alert preferences..." rows={4} className="preference-loading" />
+      ) : preferenceQuery.isError ? (
+        <div className="preference-load-error" role="alert">
+          <strong>Alert preferences unavailable</strong>
+          <span>The saved delivery settings could not be loaded. No changes can be made until the backend confirms the current state.</span>
+          <button type="button" className="context-action" aria-busy={preferenceQuery.isFetching} data-loading={preferenceQuery.isFetching} disabled={preferenceQuery.isFetching} onClick={() => void preferenceQuery.refetch()}>{preferenceQuery.isFetching ? <BusyLabel>Retrying…</BusyLabel> : "Retry"}</button>
+        </div>
+      ) : (
+        <>
       <section className="preference-card">
         <PreferenceToggle
           title="High alert"
@@ -220,6 +230,8 @@ function AlertPreferencesBody() {
           className="context-action"
           data-testid="alert-preferences-save"
           disabled={mutation.isPending || !companyId || !form.recipient_id.trim()}
+          aria-busy={mutation.isPending}
+          data-loading={mutation.isPending}
           onClick={() => {
             if (!companyId) return;
             mutation.mutate();
@@ -228,7 +240,9 @@ function AlertPreferencesBody() {
           {mutation.isPending ? "Saving..." : "Save preferences"}
         </button>
       </div>
-      {notice && (
+        </>
+      )}
+      {notice && !preferenceQuery.isError && (
         <div className={`preference-notice ${notice.kind}`} role="status">
           {notice.text}
         </div>

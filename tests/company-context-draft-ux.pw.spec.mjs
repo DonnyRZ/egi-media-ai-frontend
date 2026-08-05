@@ -141,7 +141,7 @@ test.describe("Company Context draft UX gate", () => {
     let draft = incompleteDraft();
     const fulfillDraft = async (route) => {
       if (route.request().method() !== "POST") return route.fallback();
-      await new Promise((resolve) => setTimeout(resolve, 4500));
+      await new Promise((resolve) => setTimeout(resolve, 7000));
       await route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(envelope({ draft })) });
     };
     await page.route("**/api/v1/company-context/draft", fulfillDraft);
@@ -161,6 +161,7 @@ test.describe("Company Context draft UX gate", () => {
     await expect(page.getByTestId("context-generation-state")).toBeVisible();
     await expect(page.getByText("Building a reviewable draft")).toBeVisible();
     await expect(page.getByText("Analyzing the selected source...")).toBeVisible();
+    await expect(page.locator(".context-generation-steps li.is-current")).toHaveText(/Building company context/);
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(page).toHaveScreenshot("company-context-draft-loading.png", { fullPage: true });
 
@@ -170,6 +171,7 @@ test.describe("Company Context draft UX gate", () => {
     await expect(page.getByRole("button", { name: "Confirm AI proposal" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Mark not disclosed" }).first()).toBeVisible();
     await expect(page.getByTestId("context-draft-save")).toHaveText("Save draft");
+    await page.mouse.move(0, 0);
     await expect(page).toHaveScreenshot("company-context-draft-incomplete.png", { fullPage: true });
 
     await page.getByRole("button", { name: "Confirm AI proposal" }).first().click();

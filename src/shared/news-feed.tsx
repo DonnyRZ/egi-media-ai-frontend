@@ -1,7 +1,7 @@
 "use client";
 
 import { isAxiosError } from "axios";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import {
   useCallback,
   useDeferredValue,
@@ -24,7 +24,7 @@ import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import type { ApiSuccessResponse, NewsFeedItemDto, NewsFeedPageDto } from "@/shared/types/api.types";
-import { classifyApiError, StandardState } from "@/shared/ux-state";
+import { BusyLabel, classifyApiError, StandardState } from "@/shared/ux-state";
 
 async function fetchNewsFeed(channel: NewsFeedChannelId, cursor?: string | null) {
   const response = await axiosClient.get<ApiSuccessResponse<NewsFeedPageDto>>(API_ENDPOINTS.newsFeed, {
@@ -59,21 +59,25 @@ function NewsFeedBody() {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
 
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ["news-feed", companyId, channel],
-    queryFn: () => fetchNewsFeed(channel),
+    queryFn: ({ pageParam }) => fetchNewsFeed(channel, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     enabled: Boolean(companyId),
     staleTime: 15_000,
     retry: 1,
   });
 
   const activeMeta = NEWS_FEED_CHANNELS.find((entry) => entry.id === channel) ?? NEWS_FEED_CHANNELS[1];
-  const layout = query.data?.layout ?? activeMeta.layout;
-  const label = query.data?.label ?? activeMeta.label;
-  const items = filterItems(query.data?.items ?? [], deferredSearch);
+  const pages = query.data?.pages ?? [];
+  const firstPage = pages[0];
+  const layout = firstPage?.layout ?? activeMeta.layout;
+  const label = firstPage?.label ?? activeMeta.label;
+  const items = filterItems(pages.flatMap((page) => page.items), deferredSearch);
   const isUnavailable =
-    query.data?.availability === "coming_soon" ||
-    query.data?.availability === "unavailable";
+    firstPage?.availability === "coming_soon" ||
+    firstPage?.availability === "unavailable";
 
   function selectChannel(next: NewsFeedChannelId) {
     if (next === channel) return;
@@ -94,17 +98,18 @@ function NewsFeedBody() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search title or summary..."
+            placeholder="Filter loaded stories..."
             aria-label="Search news feed"
           />
         </label>
       </div>
 
-      <NewsFeedChannelTabs channel={channel} onSelect={selectChannel} />
+      <NewsFeedChannelTabs channel={channel} onSelect={selectChannel} busy={query.isFetching} />
 
-      <div className="news-feed-meta">
+      <div className="news-feed-meta" aria-busy={query.isFetching}>
         <span>{label}</span>
         <span>{layout === "text" ? "Text list" : "Card layout"}</span>
+        {query.isFetching && !query.isLoading && <BusyLabel>Updating...</BusyLabel>}
       </div>
 
       {query.isLoading ? (
@@ -118,7 +123,7 @@ function NewsFeedBody() {
           message="This source is not available in the workspace right now. No stories were added."
         />
       ) : items.length === 0 ? (
-        <NewsFeedEmpty filtered={Boolean(deferredSearch)} onReset={() => setSearch("")} channelLabel={label} />
+        <NewsFeedEmpty filtered={Boolean(deferredSearch)} canLoadMore={Boolean(query.hasNextPage)} onReset={() => setSearch("")} channelLabel={label} />
       ) : layout === "text" ? (
         <div className="news-feed-text-list" data-testid="news-feed-text-list">
           {items.map((item) => (
@@ -132,6 +137,20 @@ function NewsFeedBody() {
           ))}
         </div>
       )}
+      {query.hasNextPage && !query.isError && !isUnavailable && (
+        <div className="news-feed-load-more">
+          <button
+            className="context-action context-action-secondary"
+            type="button"
+            aria-busy={query.isFetchingNextPage}
+            data-loading={query.isFetchingNextPage}
+            disabled={query.isFetchingNextPage}
+            onClick={() => void query.fetchNextPage()}
+          >
+            {query.isFetchingNextPage ? <BusyLabel>Loading more stories...</BusyLabel> : "Load more stories"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -139,9 +158,11 @@ function NewsFeedBody() {
 function NewsFeedChannelTabs({
   channel,
   onSelect,
+  busy,
 }: {
   channel: NewsFeedChannelId;
   onSelect: (channel: NewsFeedChannelId) => void;
+  busy: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -193,7 +214,7 @@ function NewsFeedChannelTabs({
   }
 
   return (
-    <nav className="news-feed-tabs" aria-label="News feed channels" data-testid="news-feed-tabs">
+    <nav className="news-feed-tabs" aria-label="News feed channels" aria-busy={busy} data-testid="news-feed-tabs">
       {canScrollLeft ? (
         <button
           type="button"
@@ -245,7 +266,7 @@ function NewsFeedCard({ item }: { item: NewsFeedItemDto }) {
           <img src={item.thumbnail_url} alt="" loading="lazy" />
         ) : (
           <span className="news-feed-card-placeholder">
-            <Newspaper size={22} strokeWidth={1.75} aria-hidden="true" />
+            <span className="news-feed-card-placeholder-icon"><Newspaper size={22} strokeWidth={1.75} aria-hidden="true" /></span>
           </span>
         )}
       </div>
@@ -350,10 +371,12 @@ function NewsFeedLoading({ layout }: { layout: "card" | "text" }) {
 
 function NewsFeedEmpty({
   filtered,
+  canLoadMore,
   onReset,
   channelLabel,
 }: {
   filtered: boolean;
+  canLoadMore: boolean;
   onReset: () => void;
   channelLabel: string;
 }) {
@@ -365,7 +388,9 @@ function NewsFeedEmpty({
       <h2>{filtered ? "No stories match this search" : `No stories in ${channelLabel}`}</h2>
       <p>
         {filtered
-          ? "Try a broader search or clear the query."
+          ? canLoadMore
+            ? "No loaded stories match this filter. Load more stories to include the next page."
+            : "Try a broader filter or clear the query."
           : "There are no feed items available for this channel and company scope."}
       </p>
       {filtered ? (

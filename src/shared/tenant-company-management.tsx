@@ -9,9 +9,11 @@ import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { PermissionGate } from "@/shared/permission-guard";
 import { PrerequisiteGate } from "@/shared/prerequisite-gate";
+import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import { displayCompanyName } from "@/shared/company-options";
 import type { ApiSuccessResponse } from "@/shared/types/api.types";
+import { BusyLabel, CollectionLoading, CollectionPagination } from "@/shared/ux-state";
 
 type CompanyStatus = "pending" | "active" | "suspended" | "archived" | string;
 type CompanyRow = { company_id: string; name: string | null; status?: CompanyStatus; tenant_id?: string };
@@ -24,6 +26,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const idempotency = (action: string) => `tenant-company-${action}-${crypto.randomUUID()}`;
+const COMPANY_PAGE_SIZE = 20;
 
 function statusLabel(status: CompanyStatus) {
   return statusLabels[status] ?? status.replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -36,32 +39,36 @@ function apiMessage(error: unknown, fallback: string) {
 
 export function TenantCompanyManagement() {
   const { hasTenant } = useWorkspaceScope();
+  const canManageCompanies = useSessionStore((state) => state.permissions.includes("tenant.companies.manage"));
   const client = useQueryClient();
   const [name, setName] = useState("");
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [editingStatus, setEditingStatus] = useState<CompanyStatus>("active");
+  const [page, setPage] = useState(1);
 
   const companies = useQuery({
     // Tenant administration needs the tenant registry, not the company-scoped
     // switcher feed. The latter is membership-derived and can omit a company
     // immediately after creation.
-    queryKey: ["tenant-companies"],
-    queryFn: async () =>
-      (await axiosClient.get<{ data: { items: CompanyRow[] } }>(API_ENDPOINTS.tenantCompanies)).data.data.items,
-    enabled: hasTenant,
+    queryKey: ["tenant-companies", page],
+    queryFn: async () => {
+      const result = (await axiosClient.get<{ data: { items: CompanyRow[]; meta?: { page: number; limit: number; total: number } } }>(API_ENDPOINTS.tenantCompanies, { params: { page, limit: COMPANY_PAGE_SIZE } })).data.data;
+      return { items: result.items, meta: result.meta ?? { page, limit: COMPANY_PAGE_SIZE, total: result.items.length } };
+    },
+    enabled: hasTenant && canManageCompanies,
     retry: false,
   });
   const companyRows = useMemo(() => {
     const byId = new Map<string, CompanyRow>();
-    for (const company of companies.data ?? []) {
+    for (const company of companies.data?.items ?? []) {
       if (!company.company_id) continue;
       const current = byId.get(company.company_id);
       byId.set(company.company_id, { ...current, ...company, name: company.name ?? current?.name ?? null });
     }
     return [...byId.values()];
-  }, [companies.data]);
+  }, [companies.data?.items]);
   const registryUnavailable = companies.isError;
 
   const create = useMutation({
@@ -71,14 +78,11 @@ export function TenantCompanyManagement() {
         { name: name.trim(), status: "active" },
         { headers: { "Idempotency-Key": idempotency("create") } },
       ),
-    onSuccess: (response) => {
-      const created = response.data.data.company;
+    onSuccess: () => {
       setName("");
       setNotice({ kind: "success", text: "Company created. Assign access, then approve its Company Context before ingest." });
-      client.setQueryData<CompanyRow[]>(["tenant-companies"], (current) => {
-        const existing = current ?? [];
-        return [created, ...existing.filter((item) => item.company_id !== created.company_id)];
-      });
+      setPage(1);
+      void client.invalidateQueries({ queryKey: ["tenant-companies"] });
     },
     onError: (error) => setNotice({ kind: "error", text: apiMessage(error, "Company could not be created.") }),
   });
@@ -94,8 +98,10 @@ export function TenantCompanyManagement() {
       const updated = response.data.data.company;
       setEditingId(null);
       setNotice({ kind: "success", text: "Company details updated." });
-      client.setQueryData<CompanyRow[]>(["tenant-companies"], (current) =>
-        (current ?? []).map((item) => item.company_id === updated.company_id ? { ...item, ...updated } : item),
+      client.setQueryData<{ items: CompanyRow[]; meta: { page: number; limit: number; total: number } }>(["tenant-companies", page], (current) => current ? {
+        ...current,
+        items: current.items.map((item) => item.company_id === updated.company_id ? { ...item, ...updated } : item),
+      } : current,
       );
     },
     onError: (error) => setNotice({ kind: "error", text: apiMessage(error, "Company could not be updated.") }),
@@ -131,12 +137,9 @@ export function TenantCompanyManagement() {
     >
       <div className="company-admin-page">
         <div className="company-admin-heading">
-          <div>
-            <span className="eyebrow">Workspace administration</span>
-            <h1>Companies</h1>
-          </div>
+          <span className="eyebrow">Workspace administration</span>
           <span className="company-admin-count">
-            {companies.isPending ? "Loading…" : registryUnavailable ? "Registry unavailable" : `${companyRows.length} visible`}
+            {companies.isPending ? "Loading..." : registryUnavailable ? "Registry unavailable" : `${companies.data?.meta.total ?? companyRows.length} ${companies.data?.meta.total === 1 ? "company" : "companies"}`}
           </span>
         </div>
 
@@ -153,7 +156,7 @@ export function TenantCompanyManagement() {
               <span>Company name</span>
               <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Northstar Analytics" disabled={registryUnavailable} />
             </label>
-            <button className="context-action" type="submit" disabled={!name.trim() || create.isPending || registryUnavailable}>
+            <button className="context-action" type="submit" disabled={!name.trim() || create.isPending || registryUnavailable} aria-busy={create.isPending} data-loading={create.isPending}>
               {create.isPending ? "Creating…" : "Create company"}
             </button>
           </form>
@@ -167,13 +170,14 @@ export function TenantCompanyManagement() {
               <span className="context-label">Workspace companies</span>
               <h2 id="company-list-heading">Company registry</h2>
             </div>
+            {!companies.isLoading && !companies.error && companies.data && <span className="company-section-note">Showing {companyRows.length ? (page - 1) * (companies.data.meta.limit || COMPANY_PAGE_SIZE) + 1 : 0}-{Math.min(page * (companies.data.meta.limit || COMPANY_PAGE_SIZE), companies.data.meta.total)} of {companies.data.meta.total}</span>}
           </div>
-          {companies.isLoading && <p className="company-list-state">Loading companies…</p>}
+          {companies.isLoading && <CollectionLoading label="Loading companies..." rows={3} className="company-list-loading" />}
           {companies.error && (
             <div className="company-list-state company-list-state-error" role="alert">
               <strong>Company registry unavailable</strong>
               <span>Try again when the workspace registry is available.</span>
-              <button className="source-preview-button" type="button" onClick={() => void companies.refetch()}>Retry</button>
+              <button className="source-preview-button" type="button" aria-busy={companies.isFetching} data-loading={companies.isFetching} disabled={companies.isFetching} onClick={() => void companies.refetch()}>{companies.isFetching ? <BusyLabel>Retrying…</BusyLabel> : "Retry"}</button>
             </div>
           )}
           {!companies.isLoading && !companies.error && !companyRows.length && <p className="company-list-state">No companies have been added yet.</p>}
@@ -208,7 +212,7 @@ export function TenantCompanyManagement() {
                       />
                     </label>
                     <div className="company-edit-actions">
-                      <button className="context-action" type="button" disabled={!editingName.trim() || update.isPending} onClick={() => update.mutate({ companyId: company.company_id, name: editingName, status: editingStatus })}>
+                      <button className="context-action" type="button" disabled={!editingName.trim() || update.isPending} aria-busy={update.isPending} data-loading={update.isPending} onClick={() => update.mutate({ companyId: company.company_id, name: editingName, status: editingStatus })}>
                         {update.isPending ? "Saving…" : "Save changes"}
                       </button>
                       <button className="context-action context-action-secondary" type="button" disabled={update.isPending} onClick={() => setEditingId(null)}>Cancel</button>
@@ -218,6 +222,7 @@ export function TenantCompanyManagement() {
               </div>
             ))}
           </div>
+          {companies.data && <CollectionPagination page={page} total={companies.data.meta.total} limit={companies.data.meta.limit || COMPANY_PAGE_SIZE} onPageChange={setPage} isFetching={companies.isFetching} label="companies" />}
         </section>
       </div>
     </PermissionGate>

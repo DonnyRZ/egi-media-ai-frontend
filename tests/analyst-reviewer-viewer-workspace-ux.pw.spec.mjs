@@ -21,6 +21,7 @@ const context = {
 };
 
 function narrativePayload(version = 1) {
+  const point = (text) => ({ text, sourceClaimIds: ["claim-1"] });
   return {
     report_narrative_id: "narrative-company-a",
     report_id: "report-role",
@@ -30,10 +31,15 @@ function narrativePayload(version = 1) {
     created_at: "2026-08-01T00:00:00Z",
     updated_at: "2026-08-01T00:00:00Z",
     narrative: {
-      executiveSummary: "A validated executive summary.",
-      issueNarratives: [{ reportItemId: "issue-1", narrative: "A grounded issue narrative.", sourceClaimIds: ["claim-1"] }],
-      impactNarrative: { narrative: "A grounded impact narrative.", sourceClaimIds: ["claim-1"] },
-      watchItems: [{ narrative: "A grounded watch item.", sourceClaimIds: ["claim-1"] }],
+      formatVersion: 2,
+      executiveSummary: [point("A validated executive summary.")],
+      issueSections: [{ reportItemId: "issue-1", title: "Validated issue", priority: "tinggi", status: "berkembang", narrative: point("A grounded leadership read."), whatHappened: point("A validated development occurred."), whyImportant: point("It may affect the company decision cycle."), impact: point("The operating plan may need review."), risk: point("Delay could increase execution pressure."), watch: [point("Monitor the next validated development.")] }],
+      impactSections: [{ title: "Operations", items: [point("Planning is the exposed area.")], impact: null }],
+      periodComparison: { previousPeriod: null, newSignals: [], worsening: [], improving: [] },
+      trendSections: [],
+      riskOpportunity: { risks: [point("Execution pressure may rise.")], opportunities: [], assumptions: [] },
+      watchItems: [point("A grounded watch item.")],
+      followUpOptions: [point("Review the next evidence update.")],
       sourceReferences: [{ claimId: "claim-1", sourceArticleId: "article-1" }],
     },
   };
@@ -145,14 +151,14 @@ test.describe("analyst, reviewer, and viewer role contract", () => {
 
     await page.goto("/id/settings/company-context");
     await expect(page.getByTestId("company-context-revise")).toHaveCount(0);
-    await expect(page.getByTestId("company-context-manage-versions")).toHaveCount(0);
+    await expect(page.getByTestId("company-context-manage-versions")).toBeVisible();
 
     await page.goto("/id/reports");
     await page.getByText(/01 Aug 2026/).click();
     await expect(page.getByRole("dialog", { name: "Report detail" }).getByRole("button", { name: "Approve" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Issue narrative/ })).toHaveCount(0);
     await page.getByRole("dialog", { name: "Report detail" }).getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByRole("status")).toContainText("lifecycle transition");
+    await expect(page.getByText("Backend confirmed the lifecycle transition.", { exact: true })).toBeVisible();
   });
 
   test("viewer stays read-only and receives honest forbidden states for management pages", async ({ page }) => {
@@ -168,7 +174,7 @@ test.describe("analyst, reviewer, and viewer role contract", () => {
 
     await page.goto("/id/settings/company-context");
     await expect(page.getByTestId("company-context-revise")).toHaveCount(0);
-    await expect(page.getByTestId("company-context-manage-versions")).toHaveCount(0);
+    await expect(page.getByTestId("company-context-manage-versions")).toBeVisible();
 
     await page.goto("/id/reports");
     await page.getByText(/01 Aug 2026/).click();

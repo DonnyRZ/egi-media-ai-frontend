@@ -2,7 +2,7 @@
 
 import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Link } from "@/i18n/navigation";
@@ -21,7 +21,7 @@ import type {
   NewsIntakeRunsPageDto,
   NewsIntakeStatusDto,
 } from "@/shared/types/api.types";
-import { StandardState } from "@/shared/ux-state";
+import { BusyLabel, CollectionLoading, InlineLoading, StandardState } from "@/shared/ux-state";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 
 type PullSourceKind = "egi" | "external" | "article";
@@ -42,6 +42,7 @@ async function setAutomaticDesired(desired: boolean) {
   const response = await axiosClient.post<ApiSuccessResponse<NewsIntakeStatusDto>>(
     API_ENDPOINTS.newsIntakeAutomatic,
     { desired },
+    { headers: { "Idempotency-Key": `news-intake-automatic-${crypto.randomUUID()}` } },
   );
   return response.data.data;
 }
@@ -165,7 +166,8 @@ function NewsIntakeBody() {
   const identityStatus = statusQuery.data?.management_identity?.status ?? null;
   const contextIncomplete = statusQuery.data?.company_context?.complete === false;
   const pullDisabled =
-    !canTrigger || !pullValid || pullMutation.isPending || statusQuery.isError || !isIntakeReady;
+    !canTrigger || !pullValid || pullMutation.isPending || statusQuery.isPending || statusQuery.isError || !isIntakeReady;
+  const pullBusy = pullMutation.isPending || statusQuery.isPending;
   const automaticDisabled =
     !canManage || automaticMutation.isPending || statusQuery.isPending || statusQuery.isError || !isIntakeReady;
   const runsPage = runsQuery.data;
@@ -187,12 +189,15 @@ function NewsIntakeBody() {
           <button
             type="button"
             className="context-action"
+            aria-busy={statusQuery.isFetching}
+            data-loading={statusQuery.isFetching}
+            disabled={statusQuery.isFetching}
             onClick={() => {
               setNotice(null);
               void statusQuery.refetch();
             }}
           >
-            Retry
+            {statusQuery.isFetching ? <BusyLabel>Retrying…</BusyLabel> : "Retry"}
           </button>
         </div>
       )}
@@ -214,7 +219,8 @@ function NewsIntakeBody() {
               When on, the system periodically pulls recent EGI Media articles for eligible companies. Turning this off
               stops new scheduled pulls; it does not stop work already in progress.
             </p>
-            <p className="news-intake-status-line" data-testid="news-intake-automatic-status">
+            <p className="news-intake-status-line" data-testid="news-intake-automatic-status" aria-busy={statusQuery.isPending}>
+              {statusQuery.isPending && <InlineLoading label="Loading status..." />}
               {statusQuery.isPending ? "Loading status…" : statusLine}
             </p>
             {!canManage && (
@@ -232,6 +238,8 @@ function NewsIntakeBody() {
             aria-checked={desiredOn}
             aria-label="Automatic intake"
             data-testid="news-intake-automatic-switch"
+            aria-busy={automaticMutation.isPending}
+            data-loading={automaticMutation.isPending}
             disabled={automaticDisabled}
             onClick={() => {
               if (automaticDisabled) return;
@@ -239,12 +247,12 @@ function NewsIntakeBody() {
               automaticMutation.mutate(!desiredOn);
             }}
           >
-            <span />
+            {automaticMutation.isPending ? <LoaderCircle className="toggle-spinner" size={15} strokeWidth={2.4} aria-hidden="true" /> : <span />}
           </button>
         </div>
       </section>
 
-      <section className="news-intake-section" data-testid="news-intake-pull">
+      <section className="news-intake-section" data-testid="news-intake-pull" aria-busy={pullBusy}>
         <div className="news-intake-section-head news-intake-section-head-row">
           <div>
             <span className="context-label">Manual</span>
@@ -266,7 +274,7 @@ function NewsIntakeBody() {
               role="tab"
               aria-selected={pullSource === "egi"}
               className={pullSource === "egi" ? "is-active" : undefined}
-              disabled={!canTrigger || pullMutation.isPending}
+              disabled={!canTrigger || pullBusy}
               onClick={() => {
                 setPullSource("egi");
                 setNotice(null);
@@ -279,7 +287,7 @@ function NewsIntakeBody() {
               role="tab"
               aria-selected={pullSource === "external"}
               className={pullSource === "external" ? "is-active" : undefined}
-              disabled={!canTrigger || pullMutation.isPending}
+              disabled={!canTrigger || pullBusy}
               onClick={() => {
                 setPullSource("external");
                 setNotice(null);
@@ -292,7 +300,7 @@ function NewsIntakeBody() {
               role="tab"
               aria-selected={pullSource === "article"}
               className={pullSource === "article" ? "is-active" : undefined}
-              disabled={!canTrigger || pullMutation.isPending}
+              disabled={!canTrigger || pullBusy}
               onClick={() => {
                 setPullSource("article");
                 setNotice(null);
@@ -310,7 +318,7 @@ function NewsIntakeBody() {
               data-testid="news-intake-external-media"
               value={externalMediaId}
               options={EXTERNAL_INTAKE_MEDIA.map((media) => ({ value: media.id, label: media.label }))}
-              disabled={!canTrigger || pullMutation.isPending}
+               disabled={!canTrigger || pullBusy}
               onChange={(value) => {
                 setExternalMediaId(value);
                 setNotice(null);
@@ -326,7 +334,7 @@ function NewsIntakeBody() {
             <input
               data-testid="news-intake-article-id"
               value={articleId}
-              disabled={!canTrigger || pullMutation.isPending}
+               disabled={!canTrigger || pullBusy}
               onChange={(event) => {
                 setArticleId(event.target.value);
                 setNotice(null);
@@ -348,7 +356,7 @@ function NewsIntakeBody() {
                 { value: "en", label: "English (en)" },
                 { value: "uz", label: "Uzbek (uz)" },
               ]}
-              disabled={!canTrigger || pullMutation.isPending}
+               disabled={!canTrigger || pullBusy}
               onChange={(value) => {
                 setLocale(value as IntakeLocale);
                 setNotice(null);
@@ -363,7 +371,7 @@ function NewsIntakeBody() {
               min={1}
               max={100}
               value={limit}
-              disabled={!canTrigger || pullMutation.isPending || pullSource === "article"}
+               disabled={!canTrigger || pullBusy || pullSource === "article"}
               onChange={(event) => {
                 setLimit(Number(event.target.value));
                 setNotice(null);
@@ -399,6 +407,8 @@ function NewsIntakeBody() {
             className="context-action"
             data-testid="news-intake-pull-now"
             disabled={pullDisabled}
+            aria-busy={pullMutation.isPending}
+            data-loading={pullMutation.isPending}
             onClick={() => {
               setNotice(null);
               pullMutation.mutate();
@@ -423,17 +433,17 @@ function NewsIntakeBody() {
             disabled={runsQuery.isFetching}
             onClick={() => void runsQuery.refetch()}
           >
-            <RefreshCw size={14} strokeWidth={2} aria-hidden="true" />
+            {runsQuery.isFetching ? <LoaderCircle className="button-spinner" size={14} strokeWidth={2} aria-hidden="true" /> : <RefreshCw size={14} strokeWidth={2} aria-hidden="true" />}
             {runsQuery.isFetching ? "Refreshing…" : "Refresh"}
           </button>
         </div>
 
-        {runsQuery.isPending && <p className="news-intake-runs-empty">Loading recent runs…</p>}
+        {runsQuery.isPending && <CollectionLoading label="Loading recent runs..." rows={3} className="news-intake-runs-loading" />}
         {runsQuery.isError && (
           <div className="preference-notice error" role="alert" data-testid="news-intake-runs-error">
             {newsIntakeError(runsQuery.error, "runs")}
-            <button type="button" className="context-action" onClick={() => void runsQuery.refetch()}>
-              Retry
+            <button type="button" className="context-action" aria-busy={runsQuery.isFetching} data-loading={runsQuery.isFetching} disabled={runsQuery.isFetching} onClick={() => void runsQuery.refetch()}>
+              {runsQuery.isFetching ? <InlineLoading label="Retrying…" /> : "Retry"}
             </button>
           </div>
         )}

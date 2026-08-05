@@ -11,8 +11,6 @@ import { Link, usePathname, useRouter } from "@/i18n/navigation";
 import { useSessionStore } from "@/shared/session-store";
 import { useUiStore } from "@/shared/ui-store";
 import { useFocusTrap } from "@/shared/focus-trap";
-import { SavedIssueControl } from "@/shared/saved-issue-control";
-import { CompleteIssueControl } from "@/shared/complete-issue-control";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import type { ApiSuccessResponse, CompanyContextDto, CompanyOptionListDto, InboxEmailListDto, IssueCardDto, IssueListDto, NewsIntakeStatusDto } from "@/shared/types/api.types";
@@ -22,6 +20,7 @@ import { SoftNavLink, SoftNavProvider } from "@/shared/soft-nav";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import { mergeCompanyOptions, activeCompanyLabel, displayCompanyName, displayCompanyInitial, resolveActiveCompany } from "@/shared/company-options";
 import { PlatformProvisioning } from "@/shared/platform-provisioning";
+import { BusyLabel, InlineLoading } from "@/shared/ux-state";
 
 function isNavActive(href: string, path: string) {
   return href === "/" ? path === "/" : path.startsWith(href);
@@ -45,9 +44,21 @@ function SidebarLink({
   );
 }
 
+function IssueDetailDrawerLoading() {
+  return (
+    <div className="issue-drawer-layer" role="status" aria-busy="true" aria-label="Opening issue detail">
+      <div className="issue-drawer-backdrop" aria-hidden="true" />
+      <aside className="issue-detail-drawer" aria-busy="true" aria-label="Issue detail loading">
+        <header className="issue-drawer-header"><div><span className="drawer-eyebrow">Issue detail</span><InlineLoading label="Opening issue..." /></div></header>
+        <div className="drawer-loading">{[1, 2, 3, 4, 5].map((item) => <span key={item} />)}</div>
+      </aside>
+    </div>
+  );
+}
+
 const IssueDetailDrawer = dynamic(() => import("@/shared/issue-detail-drawer").then((module) => module.IssueDetailDrawer), {
   ssr: false,
-  loading: () => null,
+  loading: IssueDetailDrawerLoading,
 });
 
 type IconName = "grid" | "bell" | "file" | "bookmark" | "settings" | "search" | "chevron" | "menu" | "close" | "user" | "users" | "building" | "logout" | "arrow" | "activity" | "shield";
@@ -165,7 +176,7 @@ function GlobalSearch({
       {showResults && (
         <div className="shell-popover global-search-popover" role="listbox" aria-label="Search results">
           {query.isPending ? (
-            <div className="global-search-state">Searching intelligence...</div>
+            <div className="global-search-state"><InlineLoading label="Searching intelligence..." /></div>
           ) : query.isError ? (
             <div className="global-search-state is-error">Search is temporarily unavailable.</div>
           ) : !query.data?.items.length ? (
@@ -231,11 +242,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [companyOpen, setCompanyOpen] = useState(false);
+  const [companySwitchPendingId, setCompanySwitchPendingId] = useState<string | null>(null);
+  const [companySwitchError, setCompanySwitchError] = useState<string | null>(null);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
+  const companyMenuRef = useRef<HTMLDivElement>(null);
+  const notificationMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const prevPathnameRef = useRef(pathname);
-  const { isMobileNavOpen, setMobileNavOpen, openIssueId, openIssue } = useUiStore();
+  const { isMobileNavOpen, setMobileNavOpen, openIssue } = useUiStore();
   const { activeCompanyId, tenantId, setActiveCompanyId, setAuthenticatedSession, clearSession, actor, authorizedCompanies, permissions } = useSessionStore();
   const { hasCompany } = useWorkspaceScope();
   const isPlatformAdmin = actor?.role === "platform_superadmin";
@@ -279,7 +295,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         ? "Checking engine status"
         : intakeStatusQuery.isError
           ? "Engine status unavailable"
-            : intakeStatusQuery.data?.intake_ready
+            : !intakeStatusQuery.data
+            ? "Checking engine status"
+            : intakeStatusQuery.data.intake_ready
             ? "Intelligence engine ready"
             : intakeStatusQuery.data?.management_identity?.has_effective_context && intakeStatusQuery.data.management_identity.status !== "ready"
               ? "Identity needs attention"
@@ -290,6 +308,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           ? "Checking context status"
           : contextReadinessQuery.isError
             ? "Context status unavailable"
+            : !contextReadinessQuery.data
+              ? "Checking context status"
             : contextReadiness?.hasEffectiveContext && contextReadiness.identityStatus === "ready"
               ? "Intelligence engine ready"
               : contextReadiness?.hasEffectiveContext
@@ -344,14 +364,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   async function switchCompany(company: { company_id: string; tenant_id?: string; name?: string | null }) {
+    setCompanySwitchError(null);
     if (company.company_id === activeCompanyId && (!company.tenant_id || company.tenant_id === tenantId)) {
       setCompanyOpen(false);
       return;
     }
+    setCompanySwitchPendingId(company.company_id);
     if (!company.tenant_id) {
       // Without tenant_id we cannot call switch-context safely; keep local selection only.
       setActiveCompanyId(company.company_id);
       setCompanyOpen(false);
+      setCompanySwitchPendingId(null);
       return;
     }
     try {
@@ -361,7 +384,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       const data = response.data.data;
       const currentActor = useSessionStore.getState().actor;
       if (!currentActor) {
-        setCompanyOpen(false);
+        setCompanySwitchError("Your session expired. Sign in again before switching company.");
         return;
       }
       setAuthenticatedSession({
@@ -382,7 +405,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       setCompanyOpen(false);
       window.location.reload();
     } catch {
-      setCompanyOpen(false);
+      setCompanySwitchError("Company could not be switched. Check your access and try again.");
+    } finally {
+      setCompanySwitchPendingId(null);
     }
   }
   useFocusTrap(sidebarRef, isMobileNavOpen, () => setMobileNavOpen(false));
@@ -407,6 +432,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname, pendingHref]);
   useEffect(() => {
     if (!showPlatformOverview) return;
+    // Keep the visible URL in sync with the control-plane view even when a
+    // direct navigation interrupts a previous App Router transition.
+    const platformPath = toLocalePath("/settings/platform");
+    if (window.location.pathname !== platformPath) {
+      window.history.replaceState(window.history.state, "", platformPath);
+    }
     router.replace("/settings/platform");
   }, [router, showPlatformOverview]);
   useEffect(() => {
@@ -441,6 +472,16 @@ export function AppShell({ children }: { children: ReactNode }) {
     document.addEventListener("keydown", closeMenus);
     return () => document.removeEventListener("keydown", closeMenus);
   }, [setMobileNavOpen]);
+  useEffect(() => {
+    function closeMenusOnOutsidePointer(event: PointerEvent) {
+      const target = event.target as Node;
+      if (companyOpen && !companyMenuRef.current?.contains(target)) setCompanyOpen(false);
+      if (notificationOpen && !notificationMenuRef.current?.contains(target)) setNotificationOpen(false);
+      if (userOpen && !userMenuRef.current?.contains(target)) setUserOpen(false);
+    }
+    document.addEventListener("pointerdown", closeMenusOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeMenusOnOutsidePointer);
+  }, [companyOpen, notificationOpen, userOpen]);
 
   return (
     <SoftNavProvider navigate={handleNavigate}>
@@ -517,7 +558,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               )}
               <SidebarLink
                 href="/settings"
-                className={`sidebar-link ${activePath.startsWith("/settings") && !activePath.startsWith("/settings/platform") && !activePath.startsWith("/settings/access") ? "is-active" : ""}`}
+                 className={`sidebar-link ${activePath.startsWith("/settings") && !activePath.startsWith("/settings/platform") && !activePath.startsWith("/settings/access") && !activePath.startsWith("/settings/companies") ? "is-active" : ""}`}
                 onNavigate={handleNavigate}
               >
                 <Icon name="settings" />
@@ -540,22 +581,27 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span><small>Control plane</small><strong>Workspace registry</strong></span>
             </div>
           ) : (
-          <div className="company-switcher-wrap">
-            <button className="company-switcher" onClick={() => { setCompanyOpen((value) => !value); setNotificationOpen(false); setUserOpen(false); }} aria-expanded={companyOpen} data-testid="company-switcher" data-has-company={hasCompany ? "true" : "false"}>
+          <div ref={companyMenuRef} className="company-switcher-wrap">
+            <button className="company-switcher" onClick={() => { setCompanySwitchError(null); setCompanyOpen((value) => !value); setNotificationOpen(false); setUserOpen(false); }} aria-expanded={companyOpen} data-testid="company-switcher" data-has-company={hasCompany ? "true" : "false"}>
               <span className="company-avatar">{switcherInitial}</span>
               <span><small>Company scope</small><strong>{switcherLabel}</strong></span><Icon name="chevron" size={15} />
             </button>
             {companyOpen && (
               <div className="shell-popover company-popover" data-testid="company-switcher-popover" role="dialog" aria-label="Company switcher">
+                {companySwitchError && <p className="company-switch-error" role="alert" data-testid="company-switcher-error-message">{companySwitchError}</p>}
                 {companiesLoading ? (
                   <div className="company-popover-empty" data-testid="company-switcher-loading">
+                    <InlineLoading label="Loading companies..." />
                     <strong>Loading companies…</strong>
                     <p>Checking authorized company membership for this account.</p>
                   </div>
                 ) : companiesQuery.isError && companies.length === 0 ? (
                   <div className="company-popover-empty" data-testid="company-switcher-error">
                     <strong>Companies unavailable</strong>
-                    <p>Authorized companies could not be loaded. Retry later, or open Provisioning if you need to create a tenant and company first.</p>
+                    <p>Authorized companies could not be loaded. Retry the membership check, or open Provisioning if you need to create a tenant and company first.</p>
+                    <button type="button" className="context-action company-popover-cta" aria-busy={companiesQuery.isFetching} data-loading={companiesQuery.isFetching} disabled={companiesQuery.isFetching} onClick={() => void companiesQuery.refetch()}>
+                      {companiesQuery.isFetching ? <BusyLabel>Retrying…</BusyLabel> : "Retry"}
+                    </button>
                     {canOpenProvisioning && (
                       <SoftNavLink href="/settings/platform" className="context-action company-popover-cta">
                         Open Provisioning
@@ -585,14 +631,18 @@ export function AppShell({ children }: { children: ReactNode }) {
                       key={company.company_id}
                       onClick={() => switchCompany(company)}
                       type="button"
+                      className="company-switcher-option"
+                      disabled={companySwitchPendingId !== null}
+                      aria-busy={companySwitchPendingId === company.company_id}
+                      data-loading={companySwitchPendingId === company.company_id}
                       data-testid="company-switcher-option"
                       data-company-id={company.company_id}
                       data-tenant-id={company.tenant_id || ""}
                     >
                       <span className="company-avatar small">{displayCompanyInitial(company)}</span>
-                      <span>
+                      <span className="company-switcher-option-copy">
                         <strong>{displayCompanyName(company)}</strong>
-                        <small>{company.tenant_id ? "Authorized scope" : "Scope incomplete"}</small>
+                        <small>{companySwitchPendingId === company.company_id ? <BusyLabel>Switching…</BusyLabel> : company.tenant_id ? "Authorized scope" : "Scope incomplete"}</small>
                       </span>
                     </button>
                   ))
@@ -603,9 +653,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
           </div>
           <div className={`header-actions ${isPlatformAdmin ? "platform-header-actions" : ""}`}>
-            {!isPlatformAdmin && <GlobalSearch companyId={activeCompanyId} hasCompany={hasCompany} canReadIssues={permissions.includes("dashboard.read")} resetKey={pathname} onOpenIssue={openIssue} />}
-            <div className="header-menu-wrap"><button className="shell-icon-button notification-button" onClick={() => { setNotificationOpen((value) => !value); setCompanyOpen(false); setUserOpen(false); }} aria-label="Notifications" aria-expanded={notificationOpen}><Icon name="bell" />{unreadNotifications > 0 && <span aria-label={`${unreadNotifications} unread notifications`} />}</button>{notificationOpen && <div className="shell-popover notification-popover" role="dialog" aria-label="Notifications"><strong>Notifications</strong><p>{notificationMessage}</p>{canReadAlerts && hasCompany && <SidebarLink href="/alerts" className="notification-popover-link" onNavigate={handleNavigate}>Open alerts <Icon name="arrow" size={14} /></SidebarLink>}</div>}</div>
-            <div className="header-menu-wrap"><button className="profile-button" onClick={() => { setUserOpen((value) => !value); setCompanyOpen(false); setNotificationOpen(false); }} aria-expanded={userOpen}><span className="profile-avatar">{profileInitial}</span><span className="profile-copy"><strong>{profileName}</strong><small>{profileRole}</small></span><Icon name="chevron" size={15} /></button>{userOpen && <div className="shell-popover user-popover"><div className="user-popover-summary"><Icon name="user" size={16} /><span><strong>Account</strong><small>{profileRole}</small></span></div><button type="button" onClick={() => {
+            {!isPlatformAdmin && permissions.includes("issue.read") && <GlobalSearch companyId={activeCompanyId} hasCompany={hasCompany} canReadIssues resetKey={pathname} onOpenIssue={openIssue} />}
+            {!isPlatformAdmin && canReadAlerts && <div ref={notificationMenuRef} className="header-menu-wrap"><button className="shell-icon-button notification-button" onClick={() => { setNotificationOpen((value) => !value); setCompanyOpen(false); setUserOpen(false); }} aria-label="Notifications" aria-expanded={notificationOpen} aria-busy={notificationQuery.isPending}><Icon name="bell" />{unreadNotifications > 0 && <span aria-label={`${unreadNotifications} unread notifications`} />}</button>{notificationOpen && <div className="shell-popover notification-popover" role="dialog" aria-label="Notifications"><strong>Notifications</strong>{notificationQuery.isPending ? <InlineLoading label="Checking notifications..." /> : <p>{notificationMessage}</p>}{notificationQuery.isError && hasCompany && <button type="button" className="notification-popover-action" aria-busy={notificationQuery.isFetching} disabled={notificationQuery.isFetching} onClick={() => void notificationQuery.refetch()}>{notificationQuery.isFetching ? <BusyLabel>Retrying…</BusyLabel> : "Retry"}</button>}{hasCompany && <SidebarLink href="/alerts" className="notification-popover-link" onNavigate={handleNavigate}>Open alerts <Icon name="arrow" size={14} /></SidebarLink>}</div>}</div>}
+            <div ref={userMenuRef} className="header-menu-wrap"><button className="profile-button" onClick={() => { setUserOpen((value) => !value); setCompanyOpen(false); setNotificationOpen(false); }} aria-expanded={userOpen}><span className="profile-avatar">{profileInitial}</span><span className="profile-copy"><strong>{profileName}</strong><small>{profileRole}</small></span><Icon name="chevron" size={15} /></button>{userOpen && <div className="shell-popover user-popover"><div className="user-popover-summary"><Icon name="user" size={16} /><span><strong>Account</strong><small>{profileRole}</small></span></div><button type="button" onClick={() => {
               setUserOpen(false);
               clearSession();
               // Hard navigate so we never linger on a protected route painting AuthGate.
@@ -623,7 +673,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
       </div>
       <IssueDetailDrawer />
-      {openIssueId && <div className="issue-save-overlay"><SavedIssueControl issueId={openIssueId} /><CompleteIssueControl issueId={openIssueId} /></div>}
     </div>
     </SoftNavProvider>
   );

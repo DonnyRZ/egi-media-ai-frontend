@@ -1,6 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { AlertCircle, Bookmark } from "lucide-react";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
@@ -9,9 +11,17 @@ import { useUiStore } from "@/shared/ui-store";
 import { savedError } from "@/shared/saved-issue-control";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import type { ApiSuccessResponse, SavedIssueListDto } from "@/shared/types/api.types";
+import { BusyLabel, CollectionEmptyState, CollectionLoading, CollectionPagination } from "@/shared/ux-state";
 
-async function readSaved() {
-  const response = await axiosClient.get<ApiSuccessResponse<SavedIssueListDto>>(API_ENDPOINTS.savedIssues, { params: { page: 1, limit: 100 } });
+const SAVED_ISSUES_PAGE_SIZE = 20;
+
+async function readSaved(page: number) {
+  const response = await axiosClient.get<ApiSuccessResponse<SavedIssueListDto>>(API_ENDPOINTS.savedIssues, { params: { page, limit: SAVED_ISSUES_PAGE_SIZE } });
+  return response.data.data;
+}
+
+async function removeSaved(issueId: string) {
+  const response = await axiosClient.delete<ApiSuccessResponse<unknown>>(API_ENDPOINTS.issueSaved(issueId), { headers: { "Idempotency-Key": `saved-remove-${issueId}-${crypto.randomUUID()}` } });
   return response.data.data;
 }
 
@@ -34,57 +44,61 @@ export function SavedIssues() {
 function SavedIssuesBody() {
   const companyId = useSessionStore((state) => state.activeCompanyId);
   const openIssue = useUiStore((state) => state.openIssue);
-  const query = useQuery({ queryKey: ["saved-issues", companyId], queryFn: readSaved, enabled: Boolean(companyId), staleTime: 15_000 });
+  const canManageSaved = useSessionStore((state) => state.permissions.includes("issue.save"));
+  const client = useQueryClient();
+  const [notice, setNotice] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  useEffect(() => setPage(1), [companyId]);
+  const query = useQuery({ queryKey: ["saved-issues", companyId, page], queryFn: () => readSaved(page), enabled: Boolean(companyId), staleTime: 15_000, retry: 1, placeholderData: keepPreviousData });
+  const removeMutation = useMutation({
+    mutationFn: removeSaved,
+    onSuccess: () => {
+      setNotice("Issue removed from saved.");
+      void client.invalidateQueries({ queryKey: ["saved-issues", companyId] });
+    },
+    onError: (error) => setNotice(savedError(error)),
+  });
 
   return (
-    <div className="issues-page">
+    <div className="issues-page" aria-busy={query.isFetching}>
       <div className="page-context">
         <span className="supporting-text">Your company-scoped issue bookmarks.</span>
       </div>
+      {notice && <div className={`preference-notice ${removeMutation.isError ? "error" : "success"}`} role={removeMutation.isError ? "alert" : "status"}>{notice}</div>}
+      {query.isFetching && !query.isLoading && <div className="collection-refresh-status" role="status"><BusyLabel>Updating saved issues...</BusyLabel></div>}
       {query.isLoading ? (
-        <div className="issues-empty">
-          <h2>Loading saved issues...</h2>
-        </div>
+        <CollectionLoading label="Loading saved issues..." rows={4} />
       ) : query.isError ? (
-        <div className="issues-empty">
-          <h2>Saved issues unavailable</h2>
-          <p>{savedError(query.error)}</p>
-          <button className="context-action" onClick={() => query.refetch()}>
-            Try again
+        <CollectionEmptyState icon={AlertCircle} tone="error" title="Saved issues unavailable" message={savedError(query.error)}>
+          <button className="context-action" aria-busy={query.isFetching} data-loading={query.isFetching} disabled={query.isFetching} onClick={() => void query.refetch()}>
+            {query.isFetching ? <BusyLabel>Retrying…</BusyLabel> : "Try again"}
           </button>
-        </div>
+        </CollectionEmptyState>
       ) : !query.data?.items.length ? (
-        <div className="issues-empty">
-          <h2>No saved issues</h2>
-          <p>Save an issue from its detail drawer to keep it here.</p>
-        </div>
+        <CollectionEmptyState icon={Bookmark} title="No saved issues" message="Save an issue from its detail drawer to keep it here." />
       ) : (
         <div className="issues-list">
           {query.data.items.map((item) => (
-            <article
-              className="issue-list-card"
-              role="button"
-              tabIndex={0}
-              key={item.saved_id}
-              onClick={() => openIssue(item.issue_id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") openIssue(item.issue_id);
-              }}
-            >
-              <div className="issue-list-copy">
-                <h2>{item.issue.title}</h2>
-                <p>{item.issue.one_liner || "No one-liner available."}</p>
-                <div className="badge-row issue-list-meta">
-                  <span className={`meta-tag meta-priority meta-priority-${item.issue.priority ?? "rendah"}`}>{item.issue.priority ?? "unprioritized"}</span>
+            <article className="saved-list-row" key={item.saved_id}>
+              <button type="button" className="saved-list-main" onClick={() => openIssue(item.issue_id)}>
+                <span className="saved-list-kicker">Saved issue</span>
+                <div className="issue-list-copy">
+                  <h2>{item.issue.title}</h2>
+                  <p>{item.issue.one_liner || "No one-liner available."}</p>
+                  <div className="badge-row issue-list-meta">
+                    <span className={`meta-tag meta-priority meta-priority-${item.issue.priority ?? "rendah"}`}>{item.issue.priority ?? "unprioritized"}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="issue-list-side">
+              </button>
+              <div className="saved-list-side">
                 <span className="timestamp">Saved {new Date(item.saved_at).toLocaleDateString()}</span>
+                {canManageSaved && <button type="button" className="source-preview-button" aria-busy={removeMutation.isPending && removeMutation.variables === item.issue_id} data-loading={removeMutation.isPending && removeMutation.variables === item.issue_id} disabled={removeMutation.isPending} onClick={() => { setNotice(null); removeMutation.mutate(item.issue_id); }}>Remove</button>}
               </div>
             </article>
           ))}
         </div>
       )}
+      {query.data && <CollectionPagination page={page} total={query.data.meta.total} limit={query.data.meta.limit || SAVED_ISSUES_PAGE_SIZE} onPageChange={setPage} isFetching={query.isFetching} label="saved issues" />}
     </div>
   );
 }

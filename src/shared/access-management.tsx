@@ -2,7 +2,7 @@
 
 import { isAxiosError } from "axios";
 import { ShieldOff } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
@@ -11,11 +11,14 @@ import { axiosClient } from "@/shared/lib/axios-client";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
+import { useFocusTrap } from "@/shared/focus-trap";
 import type { ApiSuccessResponse, CompanyOptionListDto, MembershipDto, MembershipListDto } from "@/shared/types/api.types";
+import { CollectionLoading, InlineLoading } from "@/shared/ux-state";
 
 const tenantRoles = ["tenant_admin", "company_admin", "executive", "executive_viewer", "analyst", "reviewer", "viewer"] as const;
 const companyRoles = ["company_admin", "executive", "executive_viewer", "analyst", "reviewer", "viewer"] as const;
 type CustomerRole = (typeof tenantRoles)[number];
+const MEMBERS_PAGE_SIZE = 20;
 
 const roleLabels: Record<CustomerRole, string> = {
   tenant_admin: "Tenant admin",
@@ -56,6 +59,7 @@ export function AccessManagement() {
   const queryClient = useQueryClient();
   const canManageTenantAccess = permissions.includes("tenant.users.manage");
   const canManageCompanyAccess = permissions.includes("company.users.manage");
+  const canManageAnyAccess = canManageTenantAccess || canManageCompanyAccess;
   const isCompanyScoped = !canManageTenantAccess && canManageCompanyAccess;
   const roles = isCompanyScoped ? companyRoles : tenantRoles;
   const activeCompanyName = authorizedCompanies.find((company) => company.company_id === activeCompanyId)?.name || activeCompanyId || "Active company";
@@ -70,13 +74,18 @@ export function AccessManagement() {
   const [editingRole, setEditingRole] = useState<CustomerRole>("analyst");
   const [editingCompanyId, setEditingCompanyId] = useState("");
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [membershipPage, setMembershipPage] = useState(1);
 
   const memberships = useQuery({
-    queryKey: membershipQueryKey,
+    queryKey: [...membershipQueryKey, membershipPage],
     queryFn: async () =>
-      (await axiosClient.get<ApiSuccessResponse<MembershipListDto>>(membershipCollectionEndpoint)).data.data,
+      (
+        await axiosClient.get<ApiSuccessResponse<MembershipListDto>>(membershipCollectionEndpoint, {
+          params: { page: membershipPage, limit: MEMBERS_PAGE_SIZE },
+        })
+      ).data.data,
     retry: false,
-    enabled: scope.hasTenant && (!isCompanyScoped || scope.hasCompany),
+    enabled: scope.hasTenant && canManageAnyAccess && (!isCompanyScoped || scope.hasCompany),
   });
   const companies = useQuery({
     queryKey: ["tenant-companies"],
@@ -97,7 +106,21 @@ export function AccessManagement() {
     () => new Map(companyOptions.map((company) => [company.company_id, company.name || company.company_id])),
     [companyOptions],
   );
+  const membershipItems = memberships.data?.items ?? [];
+  const membershipTotal = memberships.data?.meta?.total ?? membershipItems.length;
+  const membershipLimit = memberships.data?.meta?.limit || MEMBERS_PAGE_SIZE;
+  const membershipPageCount = Math.max(1, Math.ceil(membershipTotal / membershipLimit));
+  const membershipStart = membershipTotal === 0 ? 0 : (membershipPage - 1) * membershipLimit + 1;
+  const membershipEnd = membershipTotal === 0 ? 0 : Math.min(membershipPage * membershipLimit, membershipTotal);
   const revokingMember = memberships.data?.items.find((item) => item.membership_id === revokingId) ?? null;
+
+  useEffect(() => {
+    setMembershipPage(1);
+  }, [isCompanyScoped, activeCompanyId]);
+
+  useEffect(() => {
+    if (memberships.data && membershipPage > membershipPageCount) setMembershipPage(membershipPageCount);
+  }, [membershipPage, membershipPageCount, memberships.data]);
 
   const invite = useMutation({
     mutationFn: async () =>
@@ -196,13 +219,11 @@ export function AccessManagement() {
       ) : (
         <div className="access-page access-page-redesign">
           <div className="access-page-heading">
-            <div>
-              <span className="eyebrow">{isCompanyScoped ? "Company administration" : "Workspace administration"}</span>
-              <h1>Access</h1>
-            </div>
-            <div className="access-heading-meta">
+            <span className="eyebrow">{isCompanyScoped ? "Company administration" : "Workspace administration"}</span>
+          <div className={`access-heading-meta ${memberships.isPending ? "is-loading" : ""}`}>
               {isCompanyScoped && <span className="access-company-scope">{activeCompanyName}</span>}
-              <span className="access-count">{memberships.data?.meta.total ?? 0} members</span>
+              {memberships.isPending && <span className="access-count access-count-loading"><InlineLoading label="Loading members..." /></span>}
+              {!memberships.isPending && <span className="access-count">{membershipTotal} {membershipTotal === 1 ? "member" : "members"}</span>}
             </div>
           </div>
 
@@ -243,29 +264,30 @@ export function AccessManagement() {
                   onChange={setCompanyId}
                 />
               </label>}
-              <button className="context-action" type="submit" disabled={invite.isPending}>
-                {invite.isPending ? "Inviting…" : "Invite member"}
+              <button className="context-action" type="submit" disabled={invite.isPending || !email.trim()} aria-busy={invite.isPending} data-loading={invite.isPending}>
+                {invite.isPending ? "Inviting..." : "Invite member"}
               </button>
             </form>
           </section>
 
           {notice && <div className={`access-notice ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>{notice.text}</div>}
 
-          <section className="access-members-panel" aria-labelledby="members-heading">
+          <section className="access-members-panel" aria-labelledby="members-heading" aria-busy={memberships.isPending}>
             <div className="access-section-heading">
               <div>
                 <span className="context-label">{isCompanyScoped ? "Company members" : "Workspace members"}</span>
                 <h2 id="members-heading">People with access</h2>
               </div>
-              <span className="access-section-note">{memberships.data?.items.filter((item) => item.status === "active").length ?? 0} active · {memberships.data?.meta.total ?? 0} total</span>
+              {!memberships.isFetching && <span className="access-section-note">Showing {membershipStart}–{membershipEnd} of {membershipTotal} {membershipTotal === 1 ? "member" : "members"}</span>}
+              {memberships.isFetching && <span className="access-section-note access-section-note-loading"><InlineLoading label="Loading members..." /></span>}
             </div>
-            {memberships.isLoading && <p className="access-list-state">Loading members…</p>}
-            {memberships.error && <p className="access-list-state" role="alert">Members are unavailable. Refresh and try again.</p>}
+            {memberships.isLoading && <CollectionLoading label="Loading members..." rows={3} className="access-list-loading" />}
+            {memberships.error && <div className="access-list-state access-list-state-error" role="alert"><span>Members are unavailable. Refresh and try again.</span><button type="button" className="source-preview-button" aria-busy={memberships.isFetching} data-loading={memberships.isFetching} disabled={memberships.isFetching} onClick={() => void memberships.refetch()}>{memberships.isFetching ? "Retrying..." : "Retry"}</button></div>}
             {!memberships.isLoading && !memberships.error && !memberships.data?.items.length && (
               <p className="access-list-state">No members have been added yet.</p>
             )}
             <div className="access-member-list">
-              {memberships.data?.items.map((item) => {
+              {membershipItems.map((item) => {
                 const label = memberLabel(item.user_id);
                 const isSelf = item.user_id === actor?.id || item.user_id === `user:${actor?.email}`;
                 const canEdit = roles.some((option) => option === item.role);
@@ -303,8 +325,8 @@ export function AccessManagement() {
                           />
                         </label>}
                         <div className="access-edit-actions">
-                          <button className="context-action" type="button" disabled={update.isPending} onClick={() => update.mutate({ membershipId: item.membership_id, version: item.version, role: editingRole, ...(isCompanyScoped ? {} : { companyId: editingCompanyId }) })}>
-                            {update.isPending ? "Saving…" : "Save changes"}
+                          <button className="context-action" type="button" disabled={update.isPending} aria-busy={update.isPending} data-loading={update.isPending} onClick={() => update.mutate({ membershipId: item.membership_id, version: item.version, role: editingRole, ...(isCompanyScoped ? {} : { companyId: editingCompanyId }) })}>
+                            {update.isPending ? "Saving..." : "Save changes"}
                           </button>
                           <button className="context-action context-action-secondary" type="button" disabled={update.isPending} onClick={() => setEditingId(null)}>Cancel</button>
                         </div>
@@ -314,22 +336,74 @@ export function AccessManagement() {
                 );
               })}
             </div>
+            {!memberships.error && membershipPageCount > 1 && (
+              <nav className="access-pagination" aria-label="Members pagination">
+                <span className="access-pagination-range">Showing {membershipStart}–{membershipEnd} of {membershipTotal}</span>
+                <div className="access-pagination-controls">
+                  <button
+                    className="source-preview-button"
+                    type="button"
+                    disabled={membershipPage <= 1 || memberships.isFetching}
+                    onClick={() => setMembershipPage((current) => Math.max(1, current - 1))}
+                  >
+                    Previous
+                  </button>
+                  <span className="access-pagination-page" aria-live="polite">Page {membershipPage} of {membershipPageCount}</span>
+                  <button
+                    className="source-preview-button"
+                    type="button"
+                    disabled={membershipPage >= membershipPageCount || memberships.isFetching}
+                    onClick={() => setMembershipPage((current) => Math.min(membershipPageCount, current + 1))}
+                  >
+                    Next
+                  </button>
+                </div>
+              </nav>
+            )}
           </section>
           {revokingMember && (
-            <div className="context-delete-dialog-backdrop" role="presentation" onClick={() => setRevokingId(null)}>
-              <div className="context-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="revoke-access-title" onClick={(event) => event.stopPropagation()}>
-                <span className="context-delete-dialog-icon"><ShieldOff size={18} aria-hidden="true" /></span>
-                <h2 id="revoke-access-title">Revoke access?</h2>
-                <p>{memberLabel(revokingMember.user_id)} will lose {formatRole(revokingMember.role)} access to {displayCompany(revokingMember.company_id)}.</p>
-                <div className="context-delete-dialog-actions">
-                  <button className="context-action context-action-secondary" type="button" disabled={revoke.isPending} onClick={() => setRevokingId(null)}>Cancel</button>
-                  <button className="context-action context-action-danger" type="button" disabled={revoke.isPending} onClick={() => revoke.mutate(revokingMember)}>{revoke.isPending ? "Revoking..." : "Revoke access"}</button>
-                </div>
-              </div>
-            </div>
+            <RevokeAccessDialog
+              member={revokingMember}
+              companyLabel={displayCompany(revokingMember.company_id)}
+              busy={revoke.isPending}
+              onClose={() => setRevokingId(null)}
+              onConfirm={() => revoke.mutate(revokingMember)}
+            />
           )}
         </div>
       )}
     </ScopeRequired>
+  );
+}
+
+function RevokeAccessDialog({
+  member,
+  companyLabel,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  member: MembershipDto;
+  companyLabel: string;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true, () => {
+    if (!busy) onClose();
+  });
+  return (
+    <div className="context-delete-dialog-backdrop" role="presentation" onClick={() => { if (!busy) onClose(); }}>
+      <div ref={dialogRef} className="context-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="revoke-access-title" onClick={(event) => event.stopPropagation()}>
+        <span className="context-delete-dialog-icon"><ShieldOff size={18} aria-hidden="true" /></span>
+        <h2 id="revoke-access-title">Revoke access?</h2>
+        <p>{memberLabel(member.user_id)} will lose {formatRole(member.role)} access to {companyLabel}.</p>
+        <div className="context-delete-dialog-actions">
+          <button className="context-action context-action-secondary" type="button" disabled={busy} onClick={onClose}>Cancel</button>
+          <button className="context-action context-action-danger" type="button" disabled={busy} aria-busy={busy} data-loading={busy} onClick={onConfirm}>{busy ? "Revoking..." : "Revoke access"}</button>
+        </div>
+      </div>
+    </div>
   );
 }

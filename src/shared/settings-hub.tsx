@@ -7,6 +7,7 @@ import { useSessionStore } from "@/shared/session-store";
 import { SoftNavLink } from "@/shared/soft-nav";
 import type { ScopePrerequisite } from "@/shared/workspace-scope";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
+import { useFocusTrap } from "@/shared/focus-trap";
 
 type HubCard = {
   href: string;
@@ -124,18 +125,10 @@ function ScopeBlockDialog({
   onClose: () => void;
 }) {
   const titleId = useId();
-  const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const copy = blockReasonFor(card, missing);
   const guidance = useScopeBlockGuidance(true, missing);
-
-  useEffect(() => {
-    closeRef.current?.focus();
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useFocusTrap(dialogRef, true, onClose);
 
   return (
     <div
@@ -145,6 +138,7 @@ function ScopeBlockDialog({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         className="scope-block-dialog"
         role="alertdialog"
         aria-modal="true"
@@ -162,7 +156,7 @@ function ScopeBlockDialog({
               {guidance.action.label}
             </SoftNavLink>
           )}
-          <button ref={closeRef} type="button" className="scope-block-dismiss" onClick={onClose}>
+          <button type="button" className="scope-block-dismiss" onClick={onClose}>
             Got it
           </button>
         </div>
@@ -237,16 +231,24 @@ export function SettingsHub() {
 
   return (
     <div className="settings-hub">
-      <div className="settings-hub-grid">
-        {visibleCards.map((card) => (
-          <HubCardControl
-            key={card.href}
-            card={card}
-            missing={cardMissingPrerequisite(card, scope)}
-            onBlocked={(nextCard, missing) => setBlock({ card: nextCard, missing })}
-          />
-        ))}
-      </div>
+      {visibleCards.length ? (
+        <div className="settings-hub-grid">
+          {visibleCards.map((card) => (
+            <HubCardControl
+              key={card.href}
+              card={card}
+              missing={cardMissingPrerequisite(card, scope)}
+              onBlocked={(nextCard, missing) => setBlock({ card: nextCard, missing })}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="settings-hub-empty" role="status">
+          <span className="settings-hub-empty-mark" aria-hidden="true">—</span>
+          <h2>No settings available</h2>
+          <p>Your role has no workspace settings to manage.</p>
+        </div>
+      )}
       {block && (
         <ScopeBlockDialog card={block.card} missing={block.missing} onClose={() => setBlock(null)} />
       )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { isAxiosError } from "axios";
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
@@ -9,7 +9,10 @@ import { AppSelect } from "@/shared/app-select";
 import { displayCompanyName } from "@/shared/company-options";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { PermissionGate } from "@/shared/permission-guard";
+import { useSessionStore } from "@/shared/session-store";
 import { SoftNavLink } from "@/shared/soft-nav";
+import { useFocusTrap } from "@/shared/focus-trap";
+import { BusyLabel, CollectionLoading, InlineLoading } from "@/shared/ux-state";
 
 type TenantStatus = "pending" | "active" | "suspended" | "archived";
 type Tenant = {
@@ -150,6 +153,7 @@ function StatusBadge({ status }: { status: TenantStatus }) {
 
 export function PlatformProvisioning() {
   const client = useQueryClient();
+  const canManagePlatform = useSessionStore((state) => state.permissions.includes("platform.tenants.manage"));
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [createTenantOpen, setCreateTenantOpen] = useState(false);
@@ -173,6 +177,8 @@ export function PlatformProvisioning() {
   const [lifecycleAction, setLifecycleAction] = useState<LifecycleAction | null>(null);
   const [lifecycleReason, setLifecycleReason] = useState("");
   const [lifecycleError, setLifecycleError] = useState("");
+  const bulkModalRef = useRef<HTMLElement>(null);
+  const lifecycleModalRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     persistTenant(selected);
@@ -184,6 +190,7 @@ export function PlatformProvisioning() {
 
   const tenants = useQuery({
     queryKey: ["platform-tenants", page, statusFilter, searchQuery],
+    enabled: canManagePlatform,
     queryFn: async () => {
       const response = await axiosClient.get<{ data?: { items?: Tenant[]; meta?: TenantList["meta"] } }>(API_ENDPOINTS.platformTenants, { params: { page, limit: TENANT_PAGE_SIZE, ...(statusFilter !== "all" ? { status: statusFilter } : {}), ...(searchQuery ? { q: searchQuery } : {}) } });
       const items = response.data?.data?.items;
@@ -197,7 +204,7 @@ export function PlatformProvisioning() {
 
   const companies = useQuery({
     queryKey: companiesKey(selected?.tenant_id || ""),
-    enabled: Boolean(selected?.tenant_id),
+    enabled: canManagePlatform && Boolean(selected?.tenant_id),
     queryFn: async () => {
       const response = await axiosClient.get<{ data?: { items?: Company[] } }>(API_ENDPOINTS.platformTenantCompanies(selected!.tenant_id), { params: { page: 1, limit: 100 } });
       const items = response.data?.data?.items;
@@ -210,7 +217,7 @@ export function PlatformProvisioning() {
 
   const memberships = useQuery({
     queryKey: membershipsKey(selected?.tenant_id || ""),
-    enabled: Boolean(selected?.tenant_id),
+    enabled: canManagePlatform && Boolean(selected?.tenant_id),
     queryFn: async () => {
       const response = await axiosClient.get<{ data?: { items?: Membership[] } }>(API_ENDPOINTS.platformTenantMemberships(selected!.tenant_id), { params: { page: 1, limit: 100 } });
       const items = response.data?.data?.items;
@@ -224,12 +231,10 @@ export function PlatformProvisioning() {
   useEffect(() => {
     if (!tenants.data || tenants.isFetching || !selected) return;
     const fresh = tenants.data.items.find((tenant) => tenant.tenant_id === selected.tenant_id);
-    if (!fresh) {
-      setSelected(null);
-      setOwnerNextSteps(null);
-      setOwnerCompanyId("");
-      return;
-    }
+    // The registry is filtered and paginated. A selected workspace can be
+    // absent from the current page without being deleted; keep its detail
+    // panel mounted while the operator changes filters or pages.
+    if (!fresh) return;
     if (fresh.name !== selected.name || fresh.status !== selected.status || fresh.updated_at !== selected.updated_at) setSelected(fresh);
   }, [selected, tenants.data, tenants.isFetching]);
 
@@ -240,9 +245,29 @@ export function PlatformProvisioning() {
     setRowActionTenantId(null);
   }, [statusFilter, searchQuery]);
 
+  useEffect(() => {
+    if (!rowActionTenantId) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      const actions = target instanceof Element ? target.closest<HTMLElement>("[data-tenant-actions]") : null;
+      if (actions?.dataset.tenantActions !== rowActionTenantId) setRowActionTenantId(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRowActionTenantId(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [rowActionTenantId]);
+
   const visibleTenants = useMemo(() => {
     return tenants.data?.items || [];
   }, [tenants.data]);
+  const tenantRegistryLoading = tenants.isLoading && !tenants.error;
+  const tenantRegistryRefreshing = tenants.isFetching && Boolean(tenants.data);
 
   const counts = useMemo(() => {
     const items = tenants.data?.items || [];
@@ -268,9 +293,9 @@ export function PlatformProvisioning() {
   const emptyStateHeading = !searchQuery && !hasAnyWorkspace ? "No customer workspaces yet" : !searchQuery && statusFilter !== "all" ? `No ${STATUS_META[statusFilter].label.toLowerCase()} workspaces` : "No matching workspaces";
   const emptyStateDescription = !searchQuery && !hasAnyWorkspace ? "Create the first workspace to begin provisioning a company and its owner." : "Adjust the search or status filter.";
   const statusOptions = STATUS_FILTERS.map((filter) => {
-    const count = filter.value === "all"
+    const count = tenantRegistryLoading || tenants.error ? "—" : filter.value === "all"
       ? (filteredCounts?.all ?? counts.total)
-      : (filteredCounts?.[filter.value] ?? (filter.value === statusFilter ? (tenants.data?.meta.total ?? 0) : 0));
+      : (filteredCounts?.[filter.value] ?? (filter.value === statusFilter ? (tenants.data?.meta.total ?? 0) : "—"));
     return { value: filter.value, label: filter.label, meta: count };
   });
 
@@ -279,7 +304,7 @@ export function PlatformProvisioning() {
   const ownerStepLabel = ownerMembership?.status === "active" ? "Assigned" : ownerMembership?.status === "invited" ? "Invited" : "After company";
 
   const createTenant = useMutation({
-    mutationFn: async () => (await axiosClient.post<TenantResponse>(API_ENDPOINTS.platformTenants, { name: name.trim(), status: "active" }, { headers: { "Idempotency-Key": key() } })).data,
+    mutationFn: async () => (await axiosClient.post<TenantResponse>(API_ENDPOINTS.platformTenants, { name: name.trim() }, { headers: { "Idempotency-Key": key() } })).data,
     onSuccess: (result) => {
       const created = result.data?.tenant;
       setName("");
@@ -291,7 +316,7 @@ export function PlatformProvisioning() {
   });
 
   const createCompany = useMutation({
-    mutationFn: async () => (await axiosClient.post(API_ENDPOINTS.platformTenantCompanies(selected!.tenant_id), { name: company.trim(), status: "active" }, { headers: { "Idempotency-Key": key() } })).data,
+    mutationFn: async () => (await axiosClient.post(API_ENDPOINTS.platformTenantCompanies(selected!.tenant_id), { name: company.trim() }, { headers: { "Idempotency-Key": key() } })).data,
     onSuccess: () => {
       setCompany("");
       setOwnerNextSteps(null);
@@ -391,6 +416,7 @@ export function PlatformProvisioning() {
   }
 
   function beginBulkLifecycle() {
+    bulkLifecycleMutation.reset();
     setBulkLifecycleError("");
     setBulkLifecycleReason("");
     setBulkLifecycleOpen(true);
@@ -411,27 +437,13 @@ export function PlatformProvisioning() {
     setLifecycleReason("");
     setLifecycleError("");
   }, [lifecycleMutation.isPending]);
-
-  useEffect(() => {
-    if (!lifecycleAction) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeLifecycleDialog();
-    };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [closeLifecycleDialog, lifecycleAction]);
-
-  useEffect(() => {
-    if (!bulkLifecycleOpen) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !bulkLifecycleMutation.isPending) {
-        setBulkLifecycleOpen(false);
-        setBulkLifecycleError("");
-      }
-    };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [bulkLifecycleMutation.isPending, bulkLifecycleOpen]);
+  const closeBulkLifecycleDialog = useCallback(() => {
+    if (bulkLifecycleMutation.isPending) return;
+    setBulkLifecycleOpen(false);
+    setBulkLifecycleError("");
+  }, [bulkLifecycleMutation.isPending]);
+  useFocusTrap(bulkModalRef, bulkLifecycleOpen, closeBulkLifecycleDialog);
+  useFocusTrap(lifecycleModalRef, Boolean(lifecycleAction && selected), closeLifecycleDialog);
 
   function submitLifecycle() {
     if (!selected || !lifecycleAction) return;
@@ -483,19 +495,27 @@ export function PlatformProvisioning() {
 
           <div className="platform-registry-controls">
             <label className="platform-search-field" htmlFor="workspace-search"><span>Search workspaces</span><input id="workspace-search" type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search by name or workspace ID" /></label>
-            <span className="platform-results-summary">{tenants.data ? `${tenants.data.meta.total} matching workspace${tenants.data.meta.total === 1 ? "" : "s"}` : "Loading workspace registry…"}</span>
+            {tenantRegistryLoading && <InlineLoading label="Loading workspace registry..." />}
+            {tenantRegistryRefreshing && <InlineLoading label="Refreshing workspace registry..." />}
+            <span className="platform-results-summary">
+              {tenants.error
+                ? "Workspace registry unavailable"
+                : tenants.data
+                  ? `${tenants.data.meta.total} matching workspace${tenants.data.meta.total === 1 ? "" : "s"}`
+                  : "Loading workspace registry…"}
+            </span>
           </div>
 
           {createTenantOpen && (
-            <form className="platform-inline-form" onSubmit={(event) => { event.preventDefault(); if (name.trim()) createTenant.mutate(); }}>
+            <form className="platform-inline-form" aria-busy={createTenant.isPending} onSubmit={(event) => { event.preventDefault(); if (name.trim()) createTenant.mutate(); }}>
               <div className="platform-field"><label htmlFor="tenant-name">Workspace name</label><input id="tenant-name" aria-label="Tenant name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Customer legal or workspace name" autoFocus /></div>
-              <button type="submit" className="platform-primary-button" disabled={!name.trim() || createTenant.isPending}>{createTenant.isPending ? "Creating…" : "Create workspace"}</button>
+              <button type="submit" className="platform-primary-button" aria-busy={createTenant.isPending} data-loading={createTenant.isPending} disabled={!name.trim() || createTenant.isPending}>{createTenant.isPending ? <BusyLabel>Creating…</BusyLabel> : "Create workspace"}</button>
             </form>
           )}
           {createTenant.isError && <p className="platform-form-error" role="alert">Workspace could not be created. {errorMessage(createTenant.error, "Check the name and try again.")}</p>}
 
-          {tenants.isLoading && <div className="platform-empty"><strong>Loading workspaces…</strong><p>Reading the workspace registry.</p></div>}
-          {tenants.error && <div className="platform-empty" role="alert"><strong>Workspaces could not be loaded</strong><p>The control plane did not return the tenant registry.</p><button type="button" className="platform-secondary-button" onClick={() => void tenants.refetch()}>Retry</button></div>}
+          {tenantRegistryLoading && <CollectionLoading label="Loading workspaces..." rows={4} className="platform-registry-loading" />}
+          {tenants.error && <div className="platform-empty" role="alert"><strong>Workspaces could not be loaded</strong><p>The control plane did not return the tenant registry.</p><button type="button" className="platform-secondary-button" aria-busy={tenants.isFetching} data-loading={tenants.isFetching} disabled={tenants.isFetching} onClick={() => void tenants.refetch()}>{tenants.isFetching ? <BusyLabel>Retrying…</BusyLabel> : "Retry"}</button></div>}
           {!tenants.isLoading && !tenants.error && tenants.data?.meta.total === 0 && <div className="platform-empty"><strong>{emptyStateHeading}</strong><p>{emptyStateDescription}</p></div>}
           {canBulkLifecycle && <div className="platform-bulk-bar" role="region" aria-label="Bulk workspace actions"><div><strong>{bulkSelectedCount} {bulkSourceStatus ? STATUS_META[bulkSourceStatus].label.toLowerCase() : ""} workspace{bulkSelectedCount === 1 ? "" : "s"} selected</strong><span>{selectAllMatching ? `This action applies to every ${bulkSourceStatus ? STATUS_META[bulkSourceStatus].label.toLowerCase() : "eligible"} workspace matching the current filter.` : `${bulkActionLabel} selected workspaces in one audited operation.`}</span></div><button type="button" className="platform-danger-button" onClick={beginBulkLifecycle}>{bulkActionLabel} selected</button></div>}
           {bulkSourceStatus && bulkEligibleVisible.length > 0 && selectedVisibleCount === bulkEligibleVisible.length && !selectAllMatching && (tenants.data?.meta.total || 0) > bulkEligibleVisible.length && <div className="platform-select-all-banner" role="status"><span>All {STATUS_META[bulkSourceStatus].label.toLowerCase()} workspaces on this page are selected.</span><button type="button" onClick={() => setSelectAllMatching(true)}>Select all {tenants.data?.meta.total} matching</button></div>}
@@ -509,7 +529,7 @@ export function PlatformProvisioning() {
                   <StatusBadge status={tenant.status} />
                   <time className="platform-tenant-updated" dateTime={tenant.updated_at}>{formatDate(tenant.updated_at)}</time>
                   {selected?.tenant_id === tenant.tenant_id && <span className="platform-selected-marker">Selected</span>}
-                  <div className="platform-row-actions"><button type="button" className="platform-row-action" aria-pressed={selected?.tenant_id === tenant.tenant_id} onClick={() => selectTenant(tenant)}>{selected?.tenant_id === tenant.tenant_id ? "Opened" : "Open workspace"}</button><button type="button" className="platform-row-more" aria-haspopup="menu" aria-expanded={rowActionTenantId === tenant.tenant_id} aria-label={`Actions for ${tenant.name}`} onClick={() => setRowActionTenantId((current) => current === tenant.tenant_id ? null : tenant.tenant_id)}>⋯</button>{rowActionTenantId === tenant.tenant_id && <div className="platform-row-menu" role="menu">{LIFECYCLE_ACTIONS[tenant.status].map((action) => <button type="button" role="menuitem" key={action} className={ACTION_META[action].intent === "danger" ? "is-danger" : ""} onClick={() => { selectTenant(tenant); beginLifecycleAction(action); }}>{ACTION_META[action].label}</button>)}</div>}</div>
+                  <div className="platform-row-actions" data-tenant-actions={tenant.tenant_id}><button type="button" className="platform-row-action" aria-pressed={selected?.tenant_id === tenant.tenant_id} onClick={() => selectTenant(tenant)}>{selected?.tenant_id === tenant.tenant_id ? "Opened" : "Open workspace"}</button><button type="button" className="platform-row-more" aria-haspopup="menu" aria-expanded={rowActionTenantId === tenant.tenant_id} aria-label={`Actions for ${tenant.name}`} onClick={() => setRowActionTenantId((current) => current === tenant.tenant_id ? null : tenant.tenant_id)}>⋯</button>{rowActionTenantId === tenant.tenant_id && <div className="platform-row-menu" role="menu">{LIFECYCLE_ACTIONS[tenant.status].map((action) => <button type="button" role="menuitem" key={action} className={ACTION_META[action].intent === "danger" ? "is-danger" : ""} onClick={() => { selectTenant(tenant); beginLifecycleAction(action); }}>{ACTION_META[action].label}</button>)}</div>}</div>
                 </article>
               ))}
             </div>
@@ -534,21 +554,21 @@ export function PlatformProvisioning() {
 
               {!selectedCanProvision && <div className="platform-readonly-callout"><strong>Provisioning paused</strong><span>Company and owner changes are unavailable while this workspace is {selected.status}. Select Resume or Restore above to continue.</span></div>}
 
-              <div className="platform-form-section">
+              <div className={`platform-form-section ${createCompany.isPending ? "is-mutating" : ""}`} aria-busy={companies.isLoading || createCompany.isPending}>
                 <h3>Companies</h3>
                 <p>Companies define the customer scope inside this workspace.</p>
-                {companies.isLoading && <div className="platform-empty"><strong>Loading companies…</strong></div>}
-                {companies.error && <div className="platform-empty" role="alert"><strong>Companies could not be loaded</strong><button type="button" className="platform-secondary-button" onClick={() => void companies.refetch()}>Retry</button></div>}
+                {companies.isLoading && <CollectionLoading label="Loading companies..." rows={2} className="platform-company-loading" />}
+                {companies.error && <div className="platform-empty" role="alert"><strong>Companies could not be loaded</strong><button type="button" className="platform-secondary-button" aria-busy={companies.isFetching} data-loading={companies.isFetching} disabled={companies.isFetching} onClick={() => void companies.refetch()}>{companies.isFetching ? <BusyLabel>Retrying…</BusyLabel> : "Retry"}</button></div>}
                 {!companies.isLoading && !companies.error && companies.data?.length === 0 && <div className="platform-empty"><strong>No company provisioned</strong><p>Add the first company before assigning an owner.</p></div>}
                 {companies.data && companies.data.length > 0 && <div className="platform-company-list">{companies.data.map((item) => <div className="platform-company-row" key={item.company_id}><div><strong>{displayCompanyName(item)}</strong><br /><small>{item.company_id}</small></div><small>{item.status || "active"}</small></div>)}</div>}
-                {selectedCanProvision && <form className="platform-inline-form" onSubmit={(event) => { event.preventDefault(); if (company.trim()) createCompany.mutate(); }}><div className="platform-field"><label htmlFor="company-name">Company name</label><input id="company-name" aria-label="Company name" value={company} onChange={(event) => setCompany(event.target.value)} placeholder="Customer company name" /></div><button type="submit" className="platform-primary-button" disabled={!company.trim() || createCompany.isPending}>{createCompany.isPending ? "Creating…" : "Create company"}</button></form>}
+                {selectedCanProvision && <form className="platform-inline-form" aria-busy={createCompany.isPending} onSubmit={(event) => { event.preventDefault(); if (company.trim()) createCompany.mutate(); }}><div className="platform-field"><label htmlFor="company-name">Company name</label><input id="company-name" aria-label="Company name" value={company} onChange={(event) => setCompany(event.target.value)} placeholder="Customer company name" /></div><button type="submit" className="platform-primary-button" data-loading={createCompany.isPending} disabled={!company.trim() || createCompany.isPending}>{createCompany.isPending ? "Creating…" : "Create company"}</button></form>}
                 {createCompany.isError && <p className="platform-form-error" role="alert">Company could not be created. {errorMessage(createCompany.error, "Check the name and try again.")}</p>}
               </div>
 
-              <div className="platform-form-section">
+              <div className={`platform-form-section ${assignOwner.isPending ? "is-mutating" : ""}`} aria-busy={assignOwner.isPending}>
                 <h3>Tenant owner</h3>
                 {companies.data && companies.data.length > 0 ? (
-                  selectedCanProvision ? <><p>Invite the person who will manage this customer workspace.</p><form className="platform-owner-form" onSubmit={(event) => { event.preventDefault(); if (canAssign) assignOwner.mutate(); }}><div className="platform-field"><label htmlFor="owner-email">Owner email</label><input id="owner-email" aria-label="Owner email" type="email" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} placeholder="owner@company.com" /></div><div className="platform-field"><label htmlFor="owner-name">Full name <span>(optional)</span></label><input id="owner-name" aria-label="Owner full name" value={ownerFullName} onChange={(event) => setOwnerFullName(event.target.value)} placeholder="Full name" /></div><div className="platform-field"><label htmlFor="owner-company">Company</label><AppSelect id="owner-company" aria-label="Owner company" value={ownerCompanyId} options={[{ value: "", label: "Select company" }, ...companies.data.map((item) => ({ value: item.company_id, label: displayCompanyName(item) }))]} onChange={setOwnerCompanyId} /></div><button type="submit" className="platform-primary-button" disabled={!canAssign}>{assignOwner.isPending ? "Assigning…" : "Assign owner"}</button></form>{assignOwner.isError && <p className="platform-form-error" role="alert">Owner could not be assigned. {errorMessage(assignOwner.error, "Check the email and selected company.")}</p>}</> : <div className="platform-readonly-panel"><strong>Owner changes are paused</strong><span>The current workspace status is {STATUS_META[selected.status].label.toLowerCase()}. Existing ownership remains available for audit.</span></div>
+                  selectedCanProvision ? <><p>Invite the person who will manage this customer workspace.</p><form className="platform-owner-form" aria-busy={assignOwner.isPending} onSubmit={(event) => { event.preventDefault(); if (canAssign) assignOwner.mutate(); }}><div className="platform-field"><label htmlFor="owner-email">Owner email</label><input id="owner-email" aria-label="Owner email" type="email" value={ownerEmail} onChange={(event) => setOwnerEmail(event.target.value)} placeholder="owner@company.com" /></div><div className="platform-field"><label htmlFor="owner-name">Full name <span>(optional)</span></label><input id="owner-name" aria-label="Owner full name" value={ownerFullName} onChange={(event) => setOwnerFullName(event.target.value)} placeholder="Full name" /></div><div className="platform-field"><label htmlFor="owner-company">Company</label><AppSelect id="owner-company" aria-label="Owner company" value={ownerCompanyId} options={[{ value: "", label: "Select company" }, ...companies.data.map((item) => ({ value: item.company_id, label: displayCompanyName(item) }))]} onChange={setOwnerCompanyId} /></div><button type="submit" className="platform-primary-button" data-loading={assignOwner.isPending} disabled={!canAssign}>{assignOwner.isPending ? "Assigning…" : "Assign owner"}</button></form>{assignOwner.isError && <p className="platform-form-error" role="alert">Owner could not be assigned. {errorMessage(assignOwner.error, "Check the email and selected company.")}</p>}</> : <div className="platform-readonly-panel"><strong>Owner changes are paused</strong><span>The current workspace status is {STATUS_META[selected.status].label.toLowerCase()}. Existing ownership remains available for audit.</span></div>
                 ) : <div className="platform-empty platform-owner-locked"><strong>Owner assignment unlocks after a company is created</strong><p>There is no company to attach the tenant owner to yet.</p></div>}
               </div>
             </div>
@@ -559,9 +579,9 @@ export function PlatformProvisioning() {
 
         <section className="platform-section platform-capabilities" aria-labelledby="operations-heading"><div className="platform-section-header"><div><p className="platform-section-kicker">Platform operations</p><h2 id="operations-heading">Control plane visibility</h2><p>Review service readiness and access history without entering a customer workspace.</p></div></div><div className="platform-capability-grid"><SoftNavLink href="/settings/platform/health" className="platform-capability-card platform-capability-link"><span className="platform-capability-label">Live checks</span><strong>System health</strong><p>Check service, persistence, automation, and provider readiness.</p><span className="platform-capability-action">Open health →</span></SoftNavLink><SoftNavLink href="/settings/platform/audit-log" className="platform-capability-card platform-capability-link"><span className="platform-capability-label">Accountability</span><strong>Audit log</strong><p>Review access decisions with actor, scope, action, and outcome.</p><span className="platform-capability-action">Open audit log →</span></SoftNavLink></div></section>
 
-        {bulkLifecycleOpen && <div className="platform-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !bulkLifecycleMutation.isPending) setBulkLifecycleOpen(false); }}><section className="platform-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-lifecycle-title" aria-describedby="bulk-lifecycle-description"><div className="platform-modal-heading"><div className="platform-modal-icon is-danger" aria-hidden="true">!</div><div><p className="platform-eyebrow">Bulk workspace lifecycle</p><h2 id="bulk-lifecycle-title">{bulkActionLabel} {bulkSelectedCount} workspaces?</h2><p id="bulk-lifecycle-description">{bulkTargetStatus === "archived" ? "These workspaces will leave daily operations. Data and audit history will be retained." : "Customer sign-in and intake will pause. Data and audit history will be retained."} The operation is applied atomically.</p></div></div><div className="platform-modal-workspace"><strong>{selectAllMatching ? `All ${STATUS_META[bulkSourceStatus || "active"].label.toLowerCase()} workspaces matching the current filter` : `${bulkSelectedCount} selected workspaces`}</strong><StatusBadge status={bulkSourceStatus || "active"} /></div><form onSubmit={(event) => { event.preventDefault(); submitBulkLifecycle(); }}><label className="platform-modal-field" htmlFor="bulk-lifecycle-reason"><span>Reason <em>Required</em></span><textarea id="bulk-lifecycle-reason" value={bulkLifecycleReason} onChange={(event) => setBulkLifecycleReason(event.target.value)} placeholder="For example: subscription ended or payment is overdue" maxLength={500} autoFocus /><small>{bulkLifecycleReason.length}/500</small></label>{(bulkLifecycleError || bulkLifecycleMutation.isError) && <p className="platform-form-error" role="alert">{bulkLifecycleError || errorMessage(bulkLifecycleMutation.error, `Bulk ${bulkActionLabel.toLowerCase()} could not be completed.`)}</p>}<div className="platform-modal-actions"><button type="button" className="platform-secondary-button" onClick={() => setBulkLifecycleOpen(false)} disabled={bulkLifecycleMutation.isPending}>Cancel</button><button type="submit" className="platform-primary-button is-danger" disabled={bulkLifecycleMutation.isPending}>{bulkLifecycleMutation.isPending ? (bulkTargetStatus === "archived" ? "Archiving…" : "Suspending…") : `${bulkActionLabel} ${bulkSelectedCount} workspaces`}</button></div></form></section></div>}
+        {bulkLifecycleOpen && <div className="platform-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeBulkLifecycleDialog(); }}><section ref={bulkModalRef} className="platform-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-lifecycle-title" aria-describedby="bulk-lifecycle-description"><div className="platform-modal-heading"><div className="platform-modal-icon is-danger" aria-hidden="true">!</div><div><p className="platform-eyebrow">Bulk workspace lifecycle</p><h2 id="bulk-lifecycle-title">{bulkActionLabel} {bulkSelectedCount} workspaces?</h2><p id="bulk-lifecycle-description">{bulkTargetStatus === "archived" ? "These workspaces will leave daily operations. Data and audit history will be retained." : "Customer sign-in and intake will pause. Data and audit history will be retained."} The operation is applied atomically.</p></div></div><div className="platform-modal-workspace"><strong>{selectAllMatching ? `All ${STATUS_META[bulkSourceStatus || "active"].label.toLowerCase()} workspaces matching the current filter` : `${bulkSelectedCount} selected workspaces`}</strong><StatusBadge status={bulkSourceStatus || "active"} /></div><form aria-busy={bulkLifecycleMutation.isPending} onSubmit={(event) => { event.preventDefault(); submitBulkLifecycle(); }}><label className="platform-modal-field" htmlFor="bulk-lifecycle-reason"><span>Reason <em>Required</em></span><textarea id="bulk-lifecycle-reason" value={bulkLifecycleReason} onChange={(event) => setBulkLifecycleReason(event.target.value)} placeholder="For example: subscription ended or payment is overdue" maxLength={500} autoFocus /><small>{bulkLifecycleReason.length}/500</small></label>{(bulkLifecycleError || bulkLifecycleMutation.isError) && <p className="platform-form-error" role="alert">{bulkLifecycleError || errorMessage(bulkLifecycleMutation.error, `Bulk ${bulkActionLabel.toLowerCase()} could not be completed.`)}</p>}<div className="platform-modal-actions"><button type="button" className="platform-secondary-button" onClick={closeBulkLifecycleDialog} disabled={bulkLifecycleMutation.isPending}>Cancel</button><button type="submit" className="platform-primary-button is-danger" aria-busy={bulkLifecycleMutation.isPending} data-loading={bulkLifecycleMutation.isPending} disabled={bulkLifecycleMutation.isPending}>{bulkLifecycleMutation.isPending ? <BusyLabel>{bulkTargetStatus === "archived" ? "Archiving…" : "Suspending…"}</BusyLabel> : `${bulkActionLabel} ${bulkSelectedCount} workspaces`}</button></div></form></section></div>}
 
-        {lifecycleAction && selected && <div className="platform-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeLifecycleDialog(); }}><section className="platform-modal" role="dialog" aria-modal="true" aria-labelledby="lifecycle-dialog-title" aria-describedby="lifecycle-dialog-description"><div className="platform-modal-heading"><div className={`platform-modal-icon is-${ACTION_META[lifecycleAction].intent}`} aria-hidden="true">{ACTION_META[lifecycleAction].intent === "danger" ? "!" : "✓"}</div><div><p className="platform-eyebrow">Workspace lifecycle</p><h2 id="lifecycle-dialog-title">{ACTION_META[lifecycleAction].title}</h2><p id="lifecycle-dialog-description">{ACTION_META[lifecycleAction].description}</p></div></div><div className="platform-modal-workspace"><strong>{selected.name}</strong><StatusBadge status={selected.status} /></div><form onSubmit={(event) => { event.preventDefault(); submitLifecycle(); }}>{ACTION_META[lifecycleAction].requiresReason && <label className="platform-modal-field" htmlFor="lifecycle-reason"><span>Reason <em>Required</em></span><textarea id="lifecycle-reason" value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} placeholder="For example: subscription ended or payment is overdue" maxLength={500} autoFocus /><small>{lifecycleReason.length}/500</small></label>}{(lifecycleError || lifecycleMutation.isError) && <p className="platform-form-error" role="alert">{lifecycleError || errorMessage(lifecycleMutation.error, "Workspace status could not be updated.")}</p>}<div className="platform-modal-actions"><button type="button" className="platform-secondary-button" onClick={closeLifecycleDialog} disabled={lifecycleMutation.isPending}>Cancel</button><button type="submit" autoFocus={!ACTION_META[lifecycleAction].requiresReason} className={`platform-primary-button ${ACTION_META[lifecycleAction].intent === "danger" ? "is-danger" : ""}`} disabled={lifecycleMutation.isPending}>{lifecycleMutation.isPending ? "Updating…" : ACTION_META[lifecycleAction].label}</button></div></form></section></div>}
+        {lifecycleAction && selected && <div className="platform-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeLifecycleDialog(); }}><section ref={lifecycleModalRef} className="platform-modal" role="dialog" aria-modal="true" aria-labelledby="lifecycle-dialog-title" aria-describedby="lifecycle-dialog-description"><div className="platform-modal-heading"><div className={`platform-modal-icon is-${ACTION_META[lifecycleAction].intent}`} aria-hidden="true">{ACTION_META[lifecycleAction].intent === "danger" ? "!" : "✓"}</div><div><p className="platform-eyebrow">Workspace lifecycle</p><h2 id="lifecycle-dialog-title">{ACTION_META[lifecycleAction].title}</h2><p id="lifecycle-dialog-description">{ACTION_META[lifecycleAction].description}</p></div></div><div className="platform-modal-workspace"><strong>{selected.name}</strong><StatusBadge status={selected.status} /></div><form aria-busy={lifecycleMutation.isPending} onSubmit={(event) => { event.preventDefault(); submitLifecycle(); }}>{ACTION_META[lifecycleAction].requiresReason && <label className="platform-modal-field" htmlFor="lifecycle-reason"><span>Reason <em>Required</em></span><textarea id="lifecycle-reason" value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} placeholder="For example: subscription ended or payment is overdue" maxLength={500} autoFocus /><small>{lifecycleReason.length}/500</small></label>}{(lifecycleError || lifecycleMutation.isError) && <p className="platform-form-error" role="alert">{lifecycleError || errorMessage(lifecycleMutation.error, "Workspace status could not be updated.")}</p>}<div className="platform-modal-actions"><button type="button" className="platform-secondary-button" onClick={closeLifecycleDialog} disabled={lifecycleMutation.isPending}>Cancel</button><button type="submit" autoFocus={!ACTION_META[lifecycleAction].requiresReason} className={`platform-primary-button ${ACTION_META[lifecycleAction].intent === "danger" ? "is-danger" : ""}`} aria-busy={lifecycleMutation.isPending} data-loading={lifecycleMutation.isPending} disabled={lifecycleMutation.isPending}>{lifecycleMutation.isPending ? <BusyLabel>Updating…</BusyLabel> : ACTION_META[lifecycleAction].label}</button></div></form></section></div>}
       </div>
     </PermissionGate>
   );

@@ -13,7 +13,7 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
         return;
       }
       const body = route.request().postDataJSON();
-      const tenant = { tenant_id: "tenant-northstar", name: body.name, status: "active" };
+      const tenant = { tenant_id: "tenant-northstar", name: body.name, status: "pending" };
       tenants = [tenant, ...tenants];
       await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { tenant }, meta: { request_id: "platform-provisioning" } }) });
     });
@@ -23,7 +23,7 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
         return;
       }
       const body = route.request().postDataJSON();
-      const company = { company_id: "company-northstar", name: body.name, status: "active" };
+      const company = { company_id: "company-northstar", name: body.name, status: "pending" };
       companies = [company, ...companies];
       await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { company }, meta: { request_id: "platform-provisioning" } }) });
     });
@@ -68,6 +68,7 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     await expect(page.getByRole("alert").filter({ hasText: /could not load companies|companies are unavailable/i })).toHaveCount(0);
     await expect(page.getByLabel("Owner email")).toBeVisible();
     await expect(page.getByRole("button", { name: "Assign owner" })).toBeDisabled();
+    await page.mouse.move(0, 0);
     await expect(page).toHaveScreenshot("platform-provisioning-selected-workspace.png", { fullPage: true });
 
     await page.getByLabel("Company name").fill("Northstar Analytics");
@@ -103,5 +104,16 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     await page.getByRole("button", { name: "Create workspace" }).click();
     await expect(page.getByRole("alert").filter({ hasText: "Workspace could not be created" })).toBeVisible();
     await expect(page).toHaveScreenshot("platform-provisioning-create-error.png", { fullPage: true });
+  });
+
+  test("registry failure does not masquerade as an endless loading state", async ({ page }) => {
+    await page.route((url) => url.pathname === "/api/v1/platform/tenants", async (route) => {
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ success: false, error: { code: "SERVICE_UNAVAILABLE", message: "Tenant registry is temporarily unavailable." } }) });
+    });
+    await loginAsPlatformSuperadmin(page);
+    await page.goto("/id/settings/platform");
+    await expect(page.getByText("Workspaces could not be loaded", { exact: true })).toBeVisible();
+    await expect(page.getByText("Workspace registry unavailable", { exact: true })).toBeVisible();
+    await expect(page.getByText("Loading workspace registry…", { exact: true })).toHaveCount(0);
   });
 });

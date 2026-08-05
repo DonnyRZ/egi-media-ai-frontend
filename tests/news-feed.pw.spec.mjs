@@ -38,7 +38,7 @@ async function seedSession(page) {
   });
 }
 
-async function mockAuthAndFeed(page, onFeedRequest, unavailableChannel = null) {
+async function mockAuthAndFeed(page, onFeedRequest, unavailableChannel = null, paginatedChannel = null) {
   await page.route("**/api/v1/auth/session", async (route) =>
     route.fulfill({
       status: 200,
@@ -79,6 +79,35 @@ async function mockAuthAndFeed(page, onFeedRequest, unavailableChannel = null) {
         body: JSON.stringify({
           success: true,
           data: { channel, label: channel === "detik" ? "Detik" : channel, layout: "card", provider: "crawl", items: [], next_cursor: null, availability: "unavailable" },
+          meta: { request_id: "nf" },
+        }),
+      });
+      return;
+    }
+    if (channel === paginatedChannel) {
+      const cursor = url.searchParams.get("cursor");
+      const pageNumber = cursor ? 2 : 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          data: {
+            channel,
+            label: "Detik",
+            layout: "card",
+            provider: "crawl",
+            items: [
+              feedItem({
+                id: "crawl:article-" + pageNumber,
+                channel,
+                provider: "crawl",
+                title: "Detik page " + pageNumber,
+                thumbnail_url: null,
+              }),
+            ],
+            next_cursor: cursor ? null : "cursor-page-2",
+          },
           meta: { request_id: "nf" },
         }),
       });
@@ -136,6 +165,8 @@ test.describe("news feed channel strip", () => {
     await page.locator('[data-testid="news-feed-tabs"] button[data-channel="detik"]').click();
     await expect.poll(() => requested.at(-1)).toBe("detik");
     await expect(page.getByRole("heading", { name: "Detik story" })).toBeVisible();
+    await page.waitForTimeout(350);
+    await page.mouse.move(0, 0);
     await expect(page).toHaveScreenshot("news-feed-detik.png", { fullPage: true });
   });
 
@@ -146,6 +177,24 @@ test.describe("news feed channel strip", () => {
     await page.locator('[data-testid="news-feed-tabs"] button[data-channel="detik"]').click();
     await expect(page.getByRole("heading", { name: "Source unavailable" })).toBeVisible();
     await expect(page.getByText(/Coming soon/i)).toHaveCount(0);
+    await page.waitForTimeout(350);
+    await page.mouse.move(0, 0);
     await expect(page).toHaveScreenshot("news-feed-source-unavailable.png", { fullPage: true });
+  });
+
+  test("loads the next cursor instead of silently stopping after the first page", async ({ page }) => {
+    const requests = [];
+    await seedSession(page);
+    await mockAuthAndFeed(page, (_channel, url) => requests.push(url.search), null, "detik");
+    await page.goto("/id/issues");
+    await page.locator('[data-testid="news-feed-tabs"] button[data-channel="detik"]').click();
+
+    await expect(page.getByRole("heading", { name: "Detik page 1" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Load more stories" })).toBeVisible();
+    await page.getByRole("button", { name: "Load more stories" }).click();
+    await expect(page.getByRole("heading", { name: "Detik page 2" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Load more stories" })).toHaveCount(0);
+    expect(requests.some((search) => search.includes("cursor=cursor-page-2"))).toBe(true);
+    await expect(page).toHaveScreenshot("news-feed-load-more.png", { fullPage: true });
   });
 });

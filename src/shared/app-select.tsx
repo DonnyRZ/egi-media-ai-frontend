@@ -21,6 +21,8 @@ type AppSelectProps<Value extends string = string> = {
   disabled?: boolean;
   className?: string;
   size?: "sm" | "md";
+  leading?: ReactNode;
+  triggerKicker?: ReactNode;
 };
 
 function firstEnabledIndex<Value extends string>(options: readonly AppSelectOption<Value>[]) {
@@ -54,6 +56,8 @@ export function AppSelect<Value extends string = string>({
   disabled = false,
   className = "",
   size = "md",
+  leading,
+  triggerKicker,
 }: AppSelectProps<Value>) {
   const generatedId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -157,7 +161,11 @@ export function AppSelect<Value extends string = string>({
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={handleTriggerKeyDown}
       >
-        <span className={`app-select-value ${selected ? "" : "is-placeholder"}`.trim()}>{selected?.label ?? placeholder}</span>
+        {leading && <span className="app-select-leading" aria-hidden="true">{leading}</span>}
+        <span className="app-select-value-wrap">
+          {triggerKicker && <span className="app-select-trigger-kicker">{triggerKicker}</span>}
+          <span className={`app-select-value ${selected ? "" : "is-placeholder"}`.trim()}>{selected?.label ?? placeholder}</span>
+        </span>
         {selected?.meta && <span className="app-select-trigger-meta">{selected.meta}</span>}
         <ChevronDown className="app-select-chevron" size={17} strokeWidth={2} aria-hidden="true" />
       </button>

@@ -2,22 +2,26 @@
 
 import { isAxiosError } from "axios";
 import { ArrowRight, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { mapCompanyContext } from "@/shared/api-mappers";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
+import { PermissionGate } from "@/shared/permission-guard";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import { SoftNavLink } from "@/shared/soft-nav";
+import { useFocusTrap } from "@/shared/focus-trap";
 import type { ApiSuccessResponse, CompanyContextVersionListDto } from "@/shared/types/api.types";
+import { CollectionPagination, StandardState } from "@/shared/ux-state";
 
 type ContextVersion = ReturnType<typeof mapCompanyContext>;
+const CONTEXT_VERSIONS_PAGE_SIZE = 20;
 
-async function fetchContextVersions(companyId: string) {
-  const response = await axiosClient.get<ApiSuccessResponse<CompanyContextVersionListDto>>(API_ENDPOINTS.companyContextVersions(companyId));
+async function fetchContextVersions(companyId: string, page: number) {
+  const response = await axiosClient.get<ApiSuccessResponse<CompanyContextVersionListDto>>(API_ENDPOINTS.companyContextVersions(companyId), { params: { page, limit: CONTEXT_VERSIONS_PAGE_SIZE } });
   return {
     ...response.data.data,
     items: response.data.data.items.map(mapCompanyContext),
@@ -56,7 +60,12 @@ export function CompanyContextVersions() {
       reason="Company Context is scoped to the active company. Select a company before managing its versions."
       nextStep="Pick a company in the header switcher, then return here."
     >
-      <CompanyContextVersionsBody companyId={companyId as string} />
+      <PermissionGate
+        permission="company_context.read"
+        fallback={<StandardState kind="forbidden" title="Context history restricted" message="Your role cannot view company context versions." />}
+      >
+        <CompanyContextVersionsBody companyId={companyId as string} />
+      </PermissionGate>
     </ScopeRequired>
   );
 }
@@ -68,12 +77,14 @@ function CompanyContextVersionsBody({ companyId }: { companyId: string }) {
   const [confirmVersion, setConfirmVersion] = useState<number | null>(null);
   const [previewVersion, setPreviewVersion] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const [page, setPage] = useState(1);
   const query = useQuery({
-    queryKey: ["company-context-versions", companyId],
-    queryFn: () => fetchContextVersions(companyId),
+    queryKey: ["company-context-versions", companyId, page],
+    queryFn: () => fetchContextVersions(companyId, page),
     enabled: Boolean(companyId),
     staleTime: 60_000,
     retry: (failureCount, error) => failureCount < 1 && apiError(error).code === "NETWORK_ERROR",
+    placeholderData: keepPreviousData,
   });
   const deleteMutation = useMutation({
     mutationFn: () => deleteEffectiveContext(companyId),
@@ -89,6 +100,12 @@ function CompanyContextVersionsBody({ companyId }: { companyId: string }) {
 
   const queryItems = query.data?.items;
   const items = useMemo(() => queryItems ?? [], [queryItems]);
+  const totalVersions = query.data?.meta.total ?? 0;
+  const versionLimit = query.data?.meta.limit || CONTEXT_VERSIONS_PAGE_SIZE;
+  const versionPageCount = Math.max(1, Math.ceil(totalVersions / versionLimit));
+  useEffect(() => {
+    if (page > versionPageCount) setPage(versionPageCount);
+  }, [page, versionPageCount]);
   const preview = useMemo(() => items.find((item) => item.version === previewVersion) ?? null, [items, previewVersion]);
   const noticeNode = notice && <div className={`context-versions-notice ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>{notice.text}</div>;
 
@@ -102,7 +119,7 @@ function CompanyContextVersionsBody({ companyId }: { companyId: string }) {
         <div className="context-versions-error" role="alert">
           <strong>Context history unavailable</strong>
           <span>{error.message}</span>
-          <button type="button" className="context-action context-action-secondary" onClick={() => void query.refetch()}>Try again</button>
+          <button type="button" className="context-action context-action-secondary" aria-busy={query.isFetching} data-loading={query.isFetching} disabled={query.isFetching} onClick={() => void query.refetch()}>{query.isFetching ? "Retrying…" : "Try again"}</button>
         </div>
       </div>
     );
@@ -121,7 +138,7 @@ function CompanyContextVersionsBody({ companyId }: { companyId: string }) {
               <span className="context-label">Context registry</span>
               <div className="context-version-list-title-row">
                 <h2 id="context-version-list-heading">Saved versions</h2>
-                <span className="context-version-count">{items.length} {items.length === 1 ? "version" : "versions"}</span>
+                 <span className="context-version-count">{totalVersions} {totalVersions === 1 ? "version" : "versions"}</span>
               </div>
             </div>
             {(canApprove || canDraft) && <SoftNavLink className="context-action" href="/settings/company-context/draft">Create revision</SoftNavLink>}
@@ -161,23 +178,19 @@ function CompanyContextVersionsBody({ companyId }: { companyId: string }) {
                     )}
                   </div>
                   {confirmVersion === context.version && (
-                    <div className="context-delete-dialog-backdrop" role="presentation" onClick={() => setConfirmVersion(null)}>
-                      <div className="context-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="context-delete-title" onClick={(event) => event.stopPropagation()}>
-                        <span className="context-delete-dialog-icon"><Trash2 size={18} aria-hidden="true" /></span>
-                        <h2 id="context-delete-title">Delete version {context.version}?</h2>
-                        <p>Intake will pause until another company context is approved.</p>
-                        <div className="context-delete-dialog-actions">
-                          <button type="button" className="context-action context-action-secondary" disabled={deleteMutation.isPending} onClick={() => setConfirmVersion(null)}>Cancel</button>
-                          <button type="button" className="context-action context-action-danger" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>{deleteMutation.isPending ? "Deleting..." : "Delete"}</button>
-                        </div>
-                      </div>
-                    </div>
+                    <ContextDeleteDialog
+                      version={context.version}
+                      busy={deleteMutation.isPending}
+                      onClose={() => setConfirmVersion(null)}
+                      onConfirm={() => deleteMutation.mutate()}
+                    />
                   )}
                 </article>
               );
             })}
-          </div>
-        </section>
+           </div>
+           <CollectionPagination page={page} total={totalVersions} limit={versionLimit} onPageChange={setPage} isFetching={query.isFetching} label="versions" />
+         </section>
       )}
       {preview && <ContextSnapshotDialog context={preview} onClose={() => setPreviewVersion(null)} />}
     </div>
@@ -200,12 +213,14 @@ function EmptyContextState({ canCreate, canApprove }: { canCreate: boolean; canA
 }
 
 function ContextSnapshotDialog({ context, onClose }: { context: ContextVersion; onClose: () => void }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  useFocusTrap(dialogRef, true, onClose);
   const companyName = readField(context.fields, ["company_name", "companyName", "name"]) ?? "Company context";
   const identityStatus = context.managementIdentity?.status ?? "missing";
   return (
     <div className="source-preview-layer">
       <button className="source-preview-backdrop" type="button" aria-label="Close context version preview" onClick={onClose} />
-      <section className="source-preview-card context-snapshot-dialog" role="dialog" aria-modal="true" aria-labelledby="context-snapshot-title">
+      <section ref={dialogRef} className="source-preview-card context-snapshot-dialog" role="dialog" aria-modal="true" aria-labelledby="context-snapshot-title">
         <button className="drawer-close" type="button" aria-label="Close context version preview" onClick={onClose}><X size={18} aria-hidden="true" /></button>
         <span className="eyebrow">Archived snapshot</span>
         <h2 id="context-snapshot-title">Version v{context.version}</h2>
@@ -217,7 +232,7 @@ function ContextSnapshotDialog({ context, onClose }: { context: ContextVersion; 
         </div>
         {context.managementIdentity?.lensSummary && <p className="context-snapshot-lens">{context.managementIdentity.lensSummary}</p>}
         <div className="context-snapshot-fields">
-          {Object.entries(context.fields).slice(0, 13).map(([key, value]) => (
+          {Object.entries(context.fields).map(([key, value]) => (
             <div className="context-field" key={key}>
               <span>{humanize(key)}</span>
               {Array.isArray(value) ? <ListValue value={value} /> : <strong className={!value ? "is-empty" : ""}>{displayValue(value)}</strong>}
@@ -226,6 +241,26 @@ function ContextSnapshotDialog({ context, onClose }: { context: ContextVersion; 
         </div>
         <div className="context-snapshot-footer"><button className="context-action context-action-secondary" type="button" onClick={onClose}>Close</button></div>
       </section>
+    </div>
+  );
+}
+
+function ContextDeleteDialog({ version, busy, onClose, onConfirm }: { version: number; busy: boolean; onClose: () => void; onConfirm: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, true, () => {
+    if (!busy) onClose();
+  });
+  return (
+    <div className="context-delete-dialog-backdrop" role="presentation" onClick={() => { if (!busy) onClose(); }}>
+      <div ref={dialogRef} className="context-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="context-delete-title" onClick={(event) => event.stopPropagation()}>
+        <span className="context-delete-dialog-icon"><Trash2 size={18} aria-hidden="true" /></span>
+        <h2 id="context-delete-title">Delete version {version}?</h2>
+        <p>Intake will pause until another company context is approved.</p>
+        <div className="context-delete-dialog-actions">
+          <button type="button" className="context-action context-action-secondary" disabled={busy} onClick={onClose}>Cancel</button>
+          <button type="button" className="context-action context-action-danger" aria-busy={busy} data-loading={busy} disabled={busy} onClick={onConfirm}>{busy ? "Deleting..." : "Delete"}</button>
+        </div>
+      </div>
     </div>
   );
 }

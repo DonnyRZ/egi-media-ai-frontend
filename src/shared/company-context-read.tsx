@@ -8,10 +8,12 @@ import { Link } from "@/i18n/navigation";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { mapCompanyContext } from "@/shared/api-mappers";
+import { PermissionGate } from "@/shared/permission-guard";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
 import type { ApiSuccessResponse, CompanyContextDto, ManagementIdentityDto } from "@/shared/types/api.types";
+import { BusyLabel, StandardState } from "@/shared/ux-state";
 
 async function fetchCompanyContext(companyId: string) {
   const response = await axiosClient.get<ApiSuccessResponse<CompanyContextDto>>(API_ENDPOINTS.companyContext(companyId));
@@ -37,10 +39,11 @@ function getApiError(error: unknown) {
 export function CompanyContextRead() {
   const scope = useWorkspaceScope();
   const companyId = scope.activeCompanyId;
+  const canRead = useSessionStore((state) => state.permissions.includes("company_context.read"));
   const query = useQuery({
     queryKey: ["company-context", companyId],
     queryFn: () => fetchCompanyContext(companyId as string),
-    enabled: Boolean(companyId),
+    enabled: Boolean(companyId && canRead),
     staleTime: 60_000,
     retry: (failureCount, error) => {
       const code = getApiError(error).code;
@@ -56,16 +59,19 @@ export function CompanyContextRead() {
       reason="Effective company context is scoped to an active company. Select a company before viewing it."
       nextStep="Pick a company in the header switcher. If none exist, provision one under Platform, then return here."
     >
-      <CompanyContextBody
-        companyId={companyId as string}
-        isLoading={query.isLoading}
-        isError={query.isError}
-        error={query.error}
-        data={query.data}
-        onRetry={() => {
-          void query.refetch();
-        }}
-      />
+      <PermissionGate
+        permission="company_context.read"
+        fallback={<StandardState kind="forbidden" title="Company Context restricted" message="Your role cannot view the approved company context." />}
+      >
+        <CompanyContextBody
+          companyId={companyId as string}
+          isLoading={query.isLoading}
+          isError={query.isError}
+          error={query.error}
+          data={query.data}
+          onRetry={() => query.refetch()}
+        />
+      </PermissionGate>
     </ScopeRequired>
   );
 }
@@ -83,7 +89,7 @@ function CompanyContextBody({
   isError: boolean;
   error: unknown;
   data: Awaited<ReturnType<typeof mapCompanyContext>> | undefined;
-  onRetry: () => void;
+  onRetry: () => void | Promise<unknown>;
 }) {
   const queryClient = useQueryClient();
   const canApprove = useSessionStore((state) => state.permissions.includes("company_context.approve"));
@@ -134,6 +140,7 @@ function CompanyContextBody({
   return (
     <div className="context-page" data-testid="company-context-read">
       <div className="context-page-heading">
+        <span className="context-page-state-label">Current version</span>
         <span className="context-status-badge">{context.status}</span>
       </div>
 
@@ -145,6 +152,12 @@ function CompanyContextBody({
               {identityStatus}
             </span>
           </h2>
+          {identityReady && context.managementIdentity?.lensSummary && (
+            <div className="context-identity-lens">
+              <span className="context-identity-lens-label">Leadership lens</span>
+              <p>{context.managementIdentity.lensSummary}</p>
+            </div>
+          )}
           {!identityReady && (
             <p>
               {identityFailed
@@ -154,32 +167,32 @@ function CompanyContextBody({
             </p>
           )}
         </div>
-        {(canApprove || canDraft) && (
-          <div className="context-lifecycle-actions">
-            {canApprove && (identityFailed || identityStatus === "missing" || identityStatus === "pending") && (
-              <button
-                type="button"
-                className="context-action"
-                data-testid="company-context-retry-identity"
-                disabled={busy}
-                onClick={() => {
-                  setNotice(null);
-                  retryIdentityMutation.mutate();
-                }}
-              >
-                {retryIdentityMutation.isPending ? "Retrying identity…" : "Retry identity"}
-              </button>
-            )}
-            {canDraft && (
-              <Link className="context-action context-action-secondary" href="/settings/company-context/draft" data-testid="company-context-revise">
-                Revise
-              </Link>
-            )}
-            <Link className="context-action context-action-secondary" href="/settings/company-context/versions" data-testid="company-context-manage-versions">
-              Manage versions
+        <div className="context-lifecycle-actions">
+          {canApprove && (identityFailed || identityStatus === "missing" || identityStatus === "pending") && (
+            <button
+              type="button"
+              className="context-action"
+              data-testid="company-context-retry-identity"
+              aria-busy={retryIdentityMutation.isPending}
+              data-loading={retryIdentityMutation.isPending}
+              disabled={busy}
+              onClick={() => {
+                setNotice(null);
+                retryIdentityMutation.mutate();
+              }}
+            >
+              {retryIdentityMutation.isPending ? "Retrying identity…" : "Retry identity"}
+            </button>
+          )}
+          {canDraft && (
+            <Link className="context-action context-action-secondary" href="/settings/company-context/draft" data-testid="company-context-revise">
+              Revise
             </Link>
-          </div>
-        )}
+          )}
+          <Link className="context-action context-action-secondary" href="/settings/company-context/versions" data-testid="company-context-manage-versions">
+            Manage versions
+          </Link>
+        </div>
       </section>
 
       {notice && (
@@ -213,14 +226,12 @@ function CompanyContextBody({
           <span className="context-read-only">Read-only</span>
         </div>
         <div className="context-fields">
-          {Object.entries(context.fields)
-            .slice(0, 13)
-            .map(([key, value]) => (
-              <div className="context-field" key={key}>
-                <span>{humanize(key)}</span>
-                {Array.isArray(value) ? <ListValue value={value} /> : <strong className={!value ? "is-empty" : ""}>{displayValue(value)}</strong>}
-              </div>
-            ))}
+          {Object.entries(context.fields).map(([key, value]) => (
+            <div className="context-field" key={key}>
+              <span>{humanize(key)}</span>
+              {Array.isArray(value) ? <ListValue value={value} /> : <strong className={!value ? "is-empty" : ""}>{displayValue(value)}</strong>}
+            </div>
+          ))}
         </div>
         {context.missingFields?.length ? (
           <div className="context-missing-fields">
@@ -303,8 +314,18 @@ function ContextState({
   title: string;
   message: string;
   action?: string;
-  onAction?: () => void;
+  onAction?: () => void | Promise<unknown>;
 }) {
+  const [retrying, setRetrying] = useState(false);
+  async function runAction() {
+    if (!onAction || retrying) return;
+    setRetrying(true);
+    try {
+      await onAction();
+    } finally {
+      setRetrying(false);
+    }
+  }
   return (
     <div className="context-state">
       <div className="context-state-mark">{eyebrow === "Not found" ? "∅" : "i"}</div>
@@ -313,8 +334,8 @@ function ContextState({
       <p>{message}</p>
       {action &&
         (onAction ? (
-          <button className="context-action" onClick={onAction}>
-            {action}
+          <button className="context-action" aria-busy={retrying} data-loading={retrying} disabled={retrying} onClick={() => void runAction()}>
+            {retrying ? <BusyLabel>Retrying…</BusyLabel> : action}
           </button>
         ) : (
           <Link className="context-action" href="/settings/company-context/draft">

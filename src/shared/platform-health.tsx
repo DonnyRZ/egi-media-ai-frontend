@@ -1,12 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Activity, CheckCircle2, CircleAlert, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { Activity, CheckCircle2, CircleAlert, LoaderCircle, RefreshCw } from "lucide-react";
 import { isAxiosError } from "axios";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
 import type { ApiSuccessResponse } from "@/shared/types/api.types";
+import { useSessionStore } from "@/shared/session-store";
+import { BusyLabel } from "@/shared/ux-state";
 
 type HealthPayload = {
   service: string;
@@ -31,7 +34,10 @@ function checkTone(value: string) {
 }
 
 export function PlatformHealth() {
-  const query = useQuery({ queryKey: ["platform-health"], queryFn: readHealth, staleTime: 15_000, refetchInterval: 30_000, retry: 1 });
+  const canManagePlatform = useSessionStore((state) => state.permissions.includes("platform.tenants.manage"));
+  const query = useQuery({ queryKey: ["platform-health"], queryFn: readHealth, enabled: canManagePlatform, staleTime: 15_000, refetchInterval: 30_000, retry: 1 });
+
+  if (!canManagePlatform) return <div className="standard-state standard-state-forbidden"><h2>System health restricted</h2><p>Platform health checks are available only to platform administrators.</p></div>;
 
   if (query.isLoading) return <HealthState title="Checking system health" message="Reading the control plane status." loading />;
   if (query.isError || !query.data) {
@@ -60,8 +66,8 @@ export function PlatformHealth() {
         <div className="platform-ops-summary-card"><span>Requests observed</span><strong>{requestCount.toLocaleString()}</strong></div>
       </section>
 
-      <section className="platform-ops-section" aria-labelledby="health-checks-heading">
-        <div className="platform-ops-section-header"><div><p className="platform-section-kicker">Checks</p><h2 id="health-checks-heading">Runtime components</h2></div><button className="platform-secondary-button" onClick={() => void query.refetch()}><RefreshCw size={15} aria-hidden="true" /> Refresh</button></div>
+       <section className="platform-ops-section" aria-labelledby="health-checks-heading">
+        <div className="platform-ops-section-header"><div><p className="platform-section-kicker">Checks</p><h2 id="health-checks-heading">Runtime components</h2></div><button className="platform-secondary-button" aria-busy={query.isFetching} disabled={query.isFetching} onClick={() => void query.refetch()}>{query.isFetching ? <LoaderCircle className="button-spinner" size={15} aria-hidden="true" /> : <RefreshCw size={15} aria-hidden="true" />} {query.isFetching ? "Refreshing..." : "Refresh"}</button></div>
         <div className="platform-check-grid">
           {Object.entries(health.checks).map(([key, value]) => <article className={`platform-check-card is-${checkTone(value)}`} key={key}><div className="platform-check-icon">{checkTone(value) === "attention" ? <CircleAlert size={18} aria-hidden="true" /> : <CheckCircle2 size={18} aria-hidden="true" />}</div><div><strong>{label(key)}</strong><span>{label(value)}</span></div></article>)}
         </div>
@@ -72,6 +78,16 @@ export function PlatformHealth() {
   );
 }
 
-function HealthState({ title, message, loading = false, onRetry }: { title: string; message: string; loading?: boolean; onRetry?: () => void }) {
-  return <div className="platform-ops-state"><div className="platform-ops-state-icon">{loading ? <Activity size={20} aria-hidden="true" /> : <CircleAlert size={20} aria-hidden="true" />}</div><p className="platform-eyebrow">Platform operations</p><h1>{title}</h1><p>{message}</p>{onRetry && <button className="platform-primary-button" onClick={onRetry}>Try again</button>}</div>;
+function HealthState({ title, message, loading = false, onRetry }: { title: string; message: string; loading?: boolean; onRetry?: () => void | Promise<unknown> }) {
+  const [retrying, setRetrying] = useState(false);
+  async function retry() {
+    if (!onRetry || retrying) return;
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
+  }
+  return <div className="platform-ops-state" aria-busy={loading || retrying}><div className="platform-ops-state-icon">{loading || retrying ? <LoaderCircle className="platform-loading-icon" size={20} aria-hidden="true" /> : <CircleAlert size={20} aria-hidden="true" />}</div><p className="platform-eyebrow">Platform operations</p><h1>{title}</h1><p>{message}</p>{onRetry && <button type="button" className="platform-primary-button" aria-busy={retrying} data-loading={retrying} disabled={retrying} onClick={() => void retry()}>{retrying ? <BusyLabel>Retrying…</BusyLabel> : "Try again"}</button>}</div>;
 }

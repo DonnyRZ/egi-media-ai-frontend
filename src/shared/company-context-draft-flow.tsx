@@ -308,7 +308,7 @@ function CompanyContextDraftFlowBody() {
       return;
     }
     const timer = window.setInterval(() => {
-      setGenerationPhase((current) => (current + 1) % GENERATION_STAGES.length);
+      setGenerationPhase((current) => Math.min(current + 1, GENERATION_STAGES.length - 1));
     }, 1_600);
     return () => window.clearInterval(timer);
   }, [createMutation.isPending]);
@@ -481,6 +481,7 @@ function CompanyContextDraftFlowBody() {
           <button
             className="context-action"
             data-testid="context-draft-generate"
+            aria-busy={createMutation.isPending}
             disabled={!canGenerate}
             onClick={() => {
               if (!companyId) return;
@@ -513,7 +514,7 @@ function CompanyContextDraftFlowBody() {
               <span className="context-draft-status-dot" />
               <span>{shownDraft.result.status === "insufficient_data" ? "Source needs additional company facts." : shownDraft.status === "approved" ? "This context is active for the selected company." : "Review the proposals before saving."}</span>
             </div>
-            <button type="button" className="context-refresh-button" onClick={() => void refreshDraft()} disabled={draftQuery.isFetching || isBusy}>
+                <button type="button" className="context-refresh-button" aria-busy={draftQuery.isFetching} onClick={() => void refreshDraft()} disabled={draftQuery.isFetching || isBusy}>
               <RefreshCw className={draftQuery.isFetching ? "context-spin" : ""} size={15} strokeWidth={1.9} aria-hidden="true" />
               {draftQuery.isFetching ? "Refreshing..." : "Refresh"}
             </button>
@@ -573,7 +574,7 @@ function CompanyContextDraftFlowBody() {
                   <strong>{coreComplete ? "Ready to activate" : "Draft can be saved"}</strong>
                   <span>{coreComplete ? "All generated fields have been reviewed." : "Activation stays blocked until required review is complete."}</span>
                 </div>
-                <button className="context-action" data-testid="context-draft-save" disabled={isBusy || (!canApprove && !canDraft)} onClick={() => saveMutation.mutate()}>
+                <button className="context-action" data-testid="context-draft-save" aria-busy={saveMutation.isPending} disabled={isBusy || (!canApprove && !canDraft)} onClick={() => saveMutation.mutate()}>
                   {saveMutation.isPending && <LoaderCircle className="context-spin" size={17} strokeWidth={2} aria-hidden="true" />}
                   {saveMutation.isPending ? "Saving..." : saveLabel}
                 </button>
@@ -591,12 +592,12 @@ function CompanyContextDraftFlowBody() {
                 {effectiveQuery.isPending && !resolvedIdentityStatus ? <LoaderCircle className="context-spin" size={16} strokeWidth={2} aria-hidden="true" /> : <Sparkles size={16} strokeWidth={1.8} aria-hidden="true" />}
                 <span>Management identity: <strong>{resolvedIdentityStatus ?? "checking"}</strong>{resolvedIdentityStatus === "ready" ? " · ready for news intake." : resolvedIdentityStatus ? " · news intake stays blocked until identity is ready." : " · confirming readiness."}</span>
                 {canApprove && resolvedIdentityStatus && resolvedIdentityStatus !== "ready" && (
-                  <button type="button" className="context-inline-action" data-testid="context-draft-retry-identity" disabled={isBusy} onClick={() => { setNotice(null); retryIdentityMutation.mutate(); }}>
+                  <button type="button" className="context-inline-action" data-testid="context-draft-retry-identity" aria-busy={retryIdentityMutation.isPending} disabled={isBusy} onClick={() => { setNotice(null); retryIdentityMutation.mutate(); }}>
                     {retryIdentityMutation.isPending ? <><LoaderCircle className="context-spin" size={14} aria-hidden="true" /> Retrying...</> : "Retry identity"}
                   </button>
                 )}
               </div>
-              {effectiveQuery.isError && <div className="context-inline-error" role="alert">Active context confirmation failed. <button type="button" onClick={() => void effectiveQuery.refetch()}>Try again</button></div>}
+              {effectiveQuery.isError && <div className="context-inline-error" role="alert">Active context confirmation failed. <button type="button" aria-busy={effectiveQuery.isFetching} disabled={effectiveQuery.isFetching} onClick={() => void effectiveQuery.refetch()}>{effectiveQuery.isFetching && <LoaderCircle className="context-spin" size={13} aria-hidden="true" />}{effectiveQuery.isFetching ? "Retrying…" : "Try again"}</button></div>}
             </div>
           )}
         </section>

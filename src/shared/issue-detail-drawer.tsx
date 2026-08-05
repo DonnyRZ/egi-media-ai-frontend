@@ -3,7 +3,7 @@
 import { isAxiosError } from "axios";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { Activity, AlertCircle, Bookmark, Clock, ExternalLink, FileText, Star, X, type LucideIcon } from "lucide-react";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { axiosClient } from "@/shared/lib/axios-client";
@@ -11,6 +11,10 @@ import { useSessionStore } from "@/shared/session-store";
 import { useUiStore } from "@/shared/ui-store";
 import { useFocusTrap } from "@/shared/focus-trap";
 import type { ApiSuccessResponse } from "@/shared/types/api.types";
+import { CompleteIssueControl } from "@/shared/complete-issue-control";
+import { SavedIssueControl } from "@/shared/saved-issue-control";
+import { BusyLabel, InlineLoading } from "@/shared/ux-state";
+import { priorityLabel, statusLabel } from "@/shared/intelligence-labels";
 
 type RecordValue = Record<string, unknown>;
 type IssueDetail = { issueId: string; title: string; oneLiner: string | null; status: string; priority: "tinggi" | "sedang" | "rendah" | null; version: number; firstSeenAt: string; lastDevelopedAt: string | null; articles: Article[]; developments: Development[]; analysis: ValidatedAnalysis | null; priorityDecision: PriorityDecision | null };
@@ -31,22 +35,75 @@ export function IssueDetailDrawer() {
   const issueId = useUiStore((state) => state.openIssueId);
   const closeIssue = useUiStore((state) => state.closeIssue);
   const companyId = useSessionStore((state) => state.activeCompanyId);
-  const query = useQuery({ queryKey: ["issue-detail", companyId, issueId], queryFn: () => fetchIssueDetail(issueId as string), enabled: Boolean(issueId && companyId), retry: 1, staleTime: 30_000 });
+  const canReadIssues = useSessionStore((state) => state.permissions.includes("issue.read"));
+  const query = useQuery({ queryKey: ["issue-detail", companyId, issueId], queryFn: () => fetchIssueDetail(issueId as string), enabled: Boolean(issueId && companyId && canReadIssues), retry: 1, staleTime: 30_000 });
   const [previewSource, setPreviewSource] = useState<Source | null>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const previewRef = useRef<HTMLElement>(null);
-  useFocusTrap(drawerRef, Boolean(issueId && !previewSource), closeIssue);
+  useFocusTrap(drawerRef, Boolean(issueId && canReadIssues && !previewSource), closeIssue);
   useFocusTrap(previewRef, Boolean(previewSource), () => setPreviewSource(null));
 
-  if (!issueId) return null;
-  return <div className="issue-drawer-layer" role="presentation"><button className="issue-drawer-backdrop" onClick={closeIssue} aria-label="Close issue detail" /><aside ref={drawerRef} className="issue-detail-drawer" role="dialog" aria-modal="true" aria-label="Issue detail" aria-busy={query.isLoading}><header className="issue-drawer-header"><div><span className="drawer-eyebrow">Issue detail</span>{query.data && <h2>{query.data.title}</h2>}</div><button className="drawer-close" onClick={closeIssue} aria-label="Close issue detail"><X size={18} strokeWidth={2} aria-hidden="true" /></button></header>{query.isLoading ? <DrawerLoading /> : query.isError ? <DrawerError error={query.error} onRetry={() => query.refetch()} /> : query.data ? <DrawerContent detail={query.data} onPreview={setPreviewSource} /> : <DrawerState title="No issue data" message="The backend returned an empty detail response." />}</aside>{previewSource && <SourcePreview source={previewSource} previewRef={previewRef} onClose={() => setPreviewSource(null)} />}</div>;
+  if (!issueId || !canReadIssues) return null;
+  return <div className="issue-drawer-layer" role="presentation"><button className="issue-drawer-backdrop" onClick={closeIssue} aria-label="Close issue detail" /><aside ref={drawerRef} className="issue-detail-drawer" role="dialog" aria-modal="true" aria-label="Issue detail" aria-busy={query.isFetching}><header className="issue-drawer-header"><div><span className="drawer-eyebrow">Issue detail</span>{query.data && <h2>{query.data.title}</h2>}</div><button className="drawer-close" onClick={closeIssue} aria-label="Close issue detail"><X size={18} strokeWidth={2} aria-hidden="true" /></button></header>{query.isFetching && !query.isLoading && <div className="drawer-refreshing" role="status"><InlineLoading label="Refreshing issue..." /></div>}{query.isLoading ? <DrawerLoading /> : query.isError ? <DrawerError error={query.error} onRetry={() => query.refetch()} /> : query.data ? <><DrawerContent detail={query.data} onPreview={setPreviewSource} /><div className="issue-drawer-actions"><SavedIssueControl issueId={issueId} /><CompleteIssueControl issueId={issueId} /></div></> : <DrawerState title="No issue data" message="The backend returned an empty detail response." />}</aside>{previewSource && <SourcePreview source={previewSource} previewRef={previewRef} onClose={() => setPreviewSource(null)} />}</div>;
 }
 
 function DrawerContent({ detail, onPreview }: { detail: IssueDetail; onPreview: (source: Source) => void }) {
+  return (
+    <div className="issue-drawer-scroll">
+      <div className="drawer-summary">
+        <div className="badge-row drawer-summary-badges"><span className={`meta-tag meta-priority meta-priority-${detail.priority ?? "rendah"}`}>{priorityLabel(detail.priority)}</span><span className={`meta-tag meta-status meta-status-${detail.status}`}>{statusLabel(detail.status)}</span><span className="timestamp">Updated {formatDate(detail.lastDevelopedAt)}</span></div>
+        <p>{detail.oneLiner || "No validated one-liner is available."}</p>
+      </div>
+      <DrawerSection title="Leadership analysis">{detail.analysis ? <AnalysisView analysis={detail.analysis} /> : <InlineEmpty text="No current validated analysis is available." />}</DrawerSection>
+      <DrawerSection title="Priority decision">{detail.priorityDecision ? <div className="badge-row drawer-priority"><span className={`meta-tag meta-priority meta-priority-${detail.priorityDecision.priority}`}>{priorityLabel(detail.priorityDecision.priority)}</span><span className="timestamp">Effective {formatDate(detail.priorityDecision.effectiveAt)}</span></div> : <InlineEmpty text="No validated priority decision is available." />}</DrawerSection>
+      <DrawerSection title="Evidence claims">{detail.analysis?.content.claims.length ? <div className="claim-list">{detail.analysis.content.claims.map((claim) => <div className="claim-item" key={claim.claimId}><p>{claim.text}</p><CitationRefs ids={claim.sourceArticleIds} citations={detail.analysis?.evidence ?? []} /></div>)}</div> : <InlineEmpty text="No validated claims are available." />}</DrawerSection>
+      <DrawerSection title={`Source articles (${detail.articles.length})`}><ArticleList articles={detail.articles} onPreview={onPreview} /></DrawerSection>
+      <DrawerSection title={`Citations (${detail.analysis?.evidence.length ?? 0})`}><CitationList citations={detail.analysis?.evidence ?? []} onPreview={onPreview} /></DrawerSection>
+      <DrawerSection title="Issue history"><div className="drawer-meta-grid"><Meta label="Version" value={`v${detail.version}`} /><Meta label="First seen" value={formatDate(detail.firstSeenAt)} /><Meta label="Last developed" value={formatDate(detail.lastDevelopedAt)} /><Meta label="Priority version" value={detail.priorityDecision ? `v${detail.priorityDecision.contextVersion ?? "—"}` : "—"} /></div><div className="drawer-history-timeline"><Timeline developments={detail.developments} /></div></DrawerSection>
+    </div>
+  );
+}
+
+// Legacy ordering is retained below only as an audit reference while visual states are compared.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function LegacyDrawerContent({ detail, onPreview }: { detail: IssueDetail; onPreview: (source: Source) => void }) {
   return <div className="issue-drawer-scroll"><div className="drawer-summary"><div className="badge-row drawer-summary-badges"><span className={`meta-tag meta-priority meta-priority-${detail.priority ?? "rendah"}`}>{detail.priority ?? "unprioritized"}</span><span className={`meta-tag meta-status meta-status-${detail.status}`}>{detail.status}</span><span className="timestamp">Updated {formatDate(detail.lastDevelopedAt)}</span></div><p>{detail.oneLiner || "No validated one-liner is available."}</p></div><DrawerSection title="Version metadata"><div className="drawer-meta-grid"><Meta label="Version" value={`v${detail.version}`} /><Meta label="First seen" value={formatDate(detail.firstSeenAt)} /><Meta label="Last developed" value={formatDate(detail.lastDevelopedAt)} /><Meta label="Priority version" value={detail.priorityDecision ? `v${detail.priorityDecision.contextVersion ?? "—"}` : "—"} /></div></DrawerSection><DrawerSection title="Development timeline"><Timeline developments={detail.developments} /></DrawerSection><DrawerSection title="Validated analysis">{detail.analysis ? <AnalysisView analysis={detail.analysis} /> : <InlineEmpty text="No current validated analysis is available." />}</DrawerSection><DrawerSection title="Priority decision">{detail.priorityDecision ? <div className="badge-row drawer-priority"><span className={`meta-tag meta-priority meta-priority-${detail.priorityDecision.priority}`}>{detail.priorityDecision.priority}</span><span className="timestamp">Effective {formatDate(detail.priorityDecision.effectiveAt)}</span></div> : <InlineEmpty text="No validated priority decision is available." />}</DrawerSection><DrawerSection title="Claims">{detail.analysis?.content.claims.length ? <div className="claim-list">{detail.analysis.content.claims.map((claim) => <div className="claim-item" key={claim.claimId}><p>{claim.text}</p><CitationRefs ids={claim.sourceArticleIds} citations={detail.analysis?.evidence ?? []} /></div>)}</div> : <InlineEmpty text="No validated claims are available." />}</DrawerSection><DrawerSection title={`Articles (${detail.articles.length})`}><ArticleList articles={detail.articles} onPreview={onPreview} /></DrawerSection><DrawerSection title={`Citations (${detail.analysis?.evidence.length ?? 0})`}><CitationList citations={detail.analysis?.evidence ?? []} onPreview={onPreview} /></DrawerSection></div>;
 }
 
 function AnalysisView({ analysis }: { analysis: ValidatedAnalysis }) {
+  const sections: Array<{ label: string; icon: LucideIcon; points: AnalysisPoint[] }> = [
+    { label: "What happened", icon: FileText, points: analysis.content.whatHappened.map((text) => ({ text })) },
+    { label: "Why it matters for the company", icon: Star, points: analysis.content.whyMatters.map((text) => ({ text })) },
+    { label: "Impacts", icon: Activity, points: analysis.content.impacts },
+    { label: "Risks", icon: AlertCircle, points: analysis.content.risks },
+    { label: "What to watch", icon: Clock, points: analysis.content.watch },
+  ];
+  return (
+    <div className="analysis-view">
+      <div className="analysis-validity"><span /> Validated · citation gate passed · {formatDate(analysis.validatedAt)}</div>
+      <div className="analysis-point-grid">
+        {sections.map(({ label, icon: Icon, points }) => points.length > 0 && (
+          <section className="analysis-block" key={label}>
+            <header className="analysis-block-header"><span className="analysis-block-icon"><Icon size={15} strokeWidth={2} aria-hidden="true" /></span><div><h4>{label}</h4></div></header>
+            <AnalysisPointList points={points} citations={analysis.evidence} />
+          </section>
+        ))}
+      </div>
+      <p className="analysis-note"><Bookmark size={14} strokeWidth={2} aria-hidden="true" /> Cited points are linked to the evidence trail below.</p>
+    </div>
+  );
+}
+type AnalysisPoint = { text: string; sourceArticleIds?: string[] };
+function AnalysisPointList({ points, citations }: { points: AnalysisPoint[]; citations: Citation[] }) {
+  const visible = points.slice(0, 3);
+  const remaining = points.slice(3);
+  const list = (items: AnalysisPoint[], offset = 0) => <ul className="analysis-points">{items.map((point, index) => <li key={`${point.text}-${offset + index}`}><span>{point.text}</span>{point.sourceArticleIds?.length ? <CitationRefs ids={point.sourceArticleIds} citations={citations} /> : null}</li>)}</ul>;
+  return <div className="analysis-point-list">{list(visible)}{remaining.length > 0 && <details><summary>Show {remaining.length} more {remaining.length === 1 ? "point" : "points"}</summary>{list(remaining, 3)}</details>}</div>;
+}
+
+// Kept as a reference implementation while the compact analysis view is validated.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function LegacyAnalysisView({ analysis }: { analysis: ValidatedAnalysis }) {
   const sections: Array<[string, string[]]> = [
     ["What happened", analysis.content.whatHappened],
     ["Why it matters", analysis.content.whyMatters],
@@ -78,8 +135,20 @@ function DrawerSection({ title, children }: { title: string; children: React.Rea
 function Meta({ label, value }: { label: string; value: string }) { return <div className="drawer-meta"><span>{label}</span><strong>{value}</strong></div>; }
 function InlineEmpty({ text }: { text: string }) { return <p className="drawer-inline-empty">{text}</p>; }
 function DrawerLoading() { return <div className="drawer-loading">{[1, 2, 3, 4, 5].map((item) => <span key={item} />)}</div>; }
-function DrawerState({ title, message, action, onAction }: { title: string; message: string; action?: string; onAction?: () => void }) { return <div className="drawer-state"><h3>{title}</h3><p>{message}</p>{action && <button className="context-action" onClick={onAction}>{action}</button>}</div>; }
-function DrawerError({ error, onRetry }: { error: unknown; onRetry: () => void }) { const message = isAxiosError<{ error?: { message?: string } }>(error) ? error.response?.data?.error?.message ?? "The issue detail could not be reached." : "The issue detail could not be loaded."; return <DrawerState title="Issue detail unavailable" message={message} action="Try again" onAction={onRetry} />; }
+function DrawerState({ title, message, action, onAction }: { title: string; message: string; action?: string; onAction?: () => void | Promise<unknown> }) {
+  const [retrying, setRetrying] = useState(false);
+  async function runAction() {
+    if (!onAction || retrying) return;
+    setRetrying(true);
+    try {
+      await onAction();
+    } finally {
+      setRetrying(false);
+    }
+  }
+  return <div className="drawer-state"><h3>{title}</h3><p>{message}</p>{action && onAction && <button className="context-action" aria-busy={retrying} data-loading={retrying} disabled={retrying} onClick={() => void runAction()}>{retrying ? <BusyLabel>Retrying…</BusyLabel> : action}</button>}</div>;
+}
+function DrawerError({ error, onRetry }: { error: unknown; onRetry: () => void | Promise<unknown> }) { const message = isAxiosError<{ error?: { message?: string } }>(error) ? error.response?.data?.error?.message ?? "The issue detail could not be reached." : "The issue detail could not be loaded."; return <DrawerState title="Issue detail unavailable" message={message} action="Try again" onAction={onRetry} />; }
 
 function isRecord(value: unknown): value is RecordValue { return Boolean(value && typeof value === "object" && !Array.isArray(value)); }
 function text(value: unknown) { return typeof value === "string" && value.trim() ? value.trim() : null; }
@@ -92,7 +161,7 @@ function normalizeIssueDetail(value: unknown): IssueDetail {
   const developments = Array.isArray(value.developments) ? value.developments.flatMap((item) => { if (!isRecord(item)) return []; const developmentId = text(item.developmentId ?? item.development_id); const observedAt = text(item.observedAt ?? item.observed_at); return developmentId && observedAt ? [{ developmentId, developmentType: text(item.developmentType ?? item.development_type) ?? "development", observedAt, issueArticleId: text(item.issueArticleId ?? item.issue_article_id) }] : []; }) : [];
   const analysis = normalizeAnalysis(value.analysis);
   const priorityDecision = normalizePriority(value.priority, analysis);
-  const priorityValue = ["tinggi", "sedang", "rendah"].includes(String(value.priority)) ? value.priority as IssueDetail["priority"] : null;
+  const priorityValue = ["tinggi", "sedang", "rendah"].includes(String(value.priority)) ? value.priority as IssueDetail["priority"] : priorityDecision?.priority ?? null;
   return { issueId, title, oneLiner: text(value.one_liner), status, priority: priorityValue, version, firstSeenAt, lastDevelopedAt: text(value.last_developed_at), articles, developments, analysis, priorityDecision };
 }
 function normalizeAnalysis(value: unknown): ValidatedAnalysis | null { if (!isRecord(value) || value.status !== "current" || !isRecord(value.gate) || !isRecord(value.analysis)) return null; const analysisId = text(value.analysisId); if (!analysisId) return null; const raw = value.analysis; const evidence = Array.isArray(value.evidence) ? value.evidence.flatMap((item) => { if (!isRecord(item)) return []; const sourceArticleId = text(item.sourceArticleId ?? item.source_article_id); const canonicalUrl = url(item.canonicalUrl ?? item.canonical_url); return sourceArticleId && canonicalUrl ? [{ sourceArticleId, canonicalUrl, locale: text(item.locale), updatedAt: text(item.updatedAt ?? item.updated_at) }] : []; }) : []; const validEvidence = new Set(evidence.map((item) => item.sourceArticleId)); const cited = (key: string) => Array.isArray(raw[key]) ? raw[key].flatMap((item) => { if (!isRecord(item) || !text(item.text) || !Array.isArray(item.source_article_ids)) return []; const sourceArticleIds = item.source_article_ids.filter((id): id is string => typeof id === "string" && validEvidence.has(id)); return sourceArticleIds.length === item.source_article_ids.length ? [{ text: text(item.text) as string, sourceArticleIds }] : []; }) : []; const claims = cited("claims").flatMap((item) => { const rawClaim = Array.isArray(raw.claims) ? raw.claims.find((candidate) => isRecord(candidate) && candidate.text === item.text && Array.isArray(candidate.source_article_ids) && candidate.source_article_ids.join("|") === item.sourceArticleIds.join("|")) : null; const claimId = isRecord(rawClaim) ? text(rawClaim.claim_id) : null; return claimId ? [{ ...item, claimId }] : []; }); const whatHappened = pointList(raw.what_happened); const whyMatters = pointList(raw.why_matters); if (!whatHappened.length || !whyMatters.length || !evidence.length || !claims.length) return null; return { analysisId, status: value.status, contextVersion: Number.isInteger(value.contextVersion) ? value.contextVersion as number : null, validatedAt: text(value.validatedAt), gate: value.gate, evidence, content: { whatHappened, whyMatters, impacts: cited("impacts"), risks: cited("risks"), watch: cited("watch"), claims } }; }

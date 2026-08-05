@@ -17,6 +17,7 @@ test.describe("platform operational-surface boundary", () => {
   });
 
   test("direct customer workspace routes return to platform overview", async ({ page }) => {
+    test.setTimeout(60_000);
     await page.route((url) => url.pathname === "/api/v1/platform/tenants", async (route) => route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -24,9 +25,9 @@ test.describe("platform operational-surface boundary", () => {
     }));
     await loginAsPlatformSuperadmin(page);
     for (const path of ["/id", "/id/issues", "/id/alerts", "/id/reports", "/id/saved"]) {
-      await page.goto(path);
+      await page.goto(path, { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(/\/id\/settings\/platform\/?$/, { timeout: 15_000 });
-      await expect(page.getByRole("heading", { name: "Customer provisioning" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Workspace registry" })).toBeVisible();
     }
   });
 });

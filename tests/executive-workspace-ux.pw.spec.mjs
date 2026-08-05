@@ -56,6 +56,24 @@ const baseReport = {
   updated_at: "2026-08-01T00:00:00Z",
 };
 
+const reportNarrative = {
+  review_status: "draft",
+  report_narrative_id: "narrative-executive",
+  version: 1,
+  narrative: {
+    formatVersion: 2,
+    executiveSummary: [{ text: "Validated executive narrative", sourceClaimIds: ["claim-executive"] }],
+    issueSections: [{ reportItemId: "item-executive", title: "Validated executive signal", priority: "tinggi", status: "berkembang", narrative: { text: "A grounded leadership read.", sourceClaimIds: ["claim-executive"] }, whatHappened: { text: "A validated development occurred.", sourceClaimIds: ["claim-executive"] }, whyImportant: { text: "It may affect the next decision cycle.", sourceClaimIds: ["claim-executive"] }, impact: null, risk: null, watch: [] }],
+    impactSections: [],
+    periodComparison: { previousPeriod: null, newSignals: [], worsening: [], improving: [] },
+    trendSections: [],
+    riskOpportunity: { risks: [], opportunities: [], assumptions: [] },
+    watchItems: [],
+    followUpOptions: [],
+    sourceReferences: [{ claimId: "claim-executive", sourceArticleId: "article-executive" }],
+  },
+};
+
 function response(data) {
   return { success: true, data, meta: { request_id: "executive-role-ux" } };
 }
@@ -116,10 +134,10 @@ async function seedRole(page, role, permissions) {
     else if (path === "/api/v1/issues") data = { items: [], meta: { page: 1, limit: 10, total: 0 } };
     else if (path === "/api/v1/saved/issues") data = { items: [], meta: { page: 1, limit: 100, total: 0 } };
     else if (path === "/api/v1/reports") data = { items: [{ ...baseReport, review_status: reportStatus }], meta: { page: 1, limit: 50, total: 1 } };
-    else if (path === "/api/v1/reports/report-executive") data = { report: { ...baseReport, review_status: reportStatus }, narrative: { review_status: "draft", narrative: { executive_summary: "Validated executive narrative" } }, activity: [] };
+    else if (path === "/api/v1/reports/report-executive") data = { report: { ...baseReport, review_status: reportStatus }, narrative: reportNarrative, activity: [] };
     else if (path.startsWith("/api/v1/reports/report-executive/")) {
       if (path.endsWith("/approve")) reportStatus = "approved";
-      data = { report: { ...baseReport, review_status: reportStatus }, narrative: { review_status: "draft", narrative: { executive_summary: "Validated executive narrative" } }, activity: [] };
+      data = { report: { ...baseReport, review_status: reportStatus }, narrative: { ...reportNarrative, narrative: { ...reportNarrative.narrative } }, activity: [] };
     } else if (path === "/api/v1/companies/company-a/context" || path === "/api/v1/companies/company-a/context/versions") {
       data = path.endsWith("/versions") ? { items: [context], meta: { total: 1 } } : context;
     } else if (path === "/api/v1/companies/company-a/alert-preference") {
@@ -146,13 +164,19 @@ test.describe("executive role workspace contract", () => {
     await page.goto("/id/settings/company-context");
     await expect(page.getByTestId("company-context-identity-badge")).toHaveText("ready");
     await expect(page.getByTestId("company-context-revise")).toHaveCount(0);
-    await expect(page.getByTestId("company-context-manage-versions")).toHaveCount(0);
+    await expect(page.getByTestId("company-context-manage-versions")).toBeVisible();
     await expect(page).toHaveScreenshot("executive-company-context-readonly.png", { fullPage: true });
 
     await page.goto("/id/settings/alert-preferences");
     await page.getByRole("switch", { name: "High alert" }).click();
     await page.getByTestId("alert-preferences-save").click();
     await expect(page.getByRole("status")).toContainText("Preference confirmed");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+    await page.waitForFunction(() => window.scrollY === 0);
+    await page.mouse.move(0, 0);
     await expect(page).toHaveScreenshot("executive-alert-preferences.png", { fullPage: true });
 
     await page.goto("/id/settings/display-language");
@@ -160,6 +184,12 @@ test.describe("executive role workspace contract", () => {
     await page.getByRole("option", { name: "English", exact: true }).click();
     await page.getByTestId("display-language-save").click();
     await expect(page.getByRole("status")).toContainText("saved for this company");
+    await page.evaluate(() => {
+      document.documentElement.style.scrollBehavior = "auto";
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+    await page.waitForFunction(() => window.scrollY === 0);
+    await page.mouse.move(0, 0);
     await expect(page).toHaveScreenshot("executive-display-language.png", { fullPage: true });
 
     await page.goto("/id/reports");
@@ -169,7 +199,7 @@ test.describe("executive role workspace contract", () => {
     await expect(page.getByRole("dialog").getByRole("button", { name: "Approve" })).toBeVisible();
     await expect(page.getByRole("dialog").getByRole("button", { name: "Submit review" })).toHaveCount(0);
     await page.getByRole("dialog").getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByRole("status")).toContainText("lifecycle transition");
+    await expect(page.getByText("Backend confirmed the lifecycle transition.", { exact: true })).toBeVisible();
     await expect(page.getByRole("dialog").getByRole("button", { name: "Share" })).toBeVisible();
     await expect(page).toHaveScreenshot("executive-report-approved.png", { fullPage: true });
     await page.getByRole("dialog").getByRole("button", { name: "Close report detail" }).click();
@@ -196,7 +226,7 @@ test.describe("executive role workspace contract", () => {
     await page.goto("/id/settings/company-context");
     await expect(page.getByTestId("company-context-identity-badge")).toHaveText("ready");
     await expect(page.getByTestId("company-context-revise")).toHaveCount(0);
-    await expect(page.getByTestId("company-context-manage-versions")).toHaveCount(0);
+    await expect(page.getByTestId("company-context-manage-versions")).toBeVisible();
 
     await page.goto("/id/reports");
     await page.getByText(/01 Aug 2026/).click();

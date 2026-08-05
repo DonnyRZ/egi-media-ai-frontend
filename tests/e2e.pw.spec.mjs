@@ -143,7 +143,7 @@ test.describe("supported primary flows", () => {
     await expect(page.getByText(/Context saved and activated/i)).toBeVisible();
     await expect(page.getByTestId("context-draft-identity-status")).toContainText(/ready/i);
     await expect(page.locator(".context-status-badge").filter({ hasText: "active" })).toBeVisible();
-    await expect(page.getByText("Effective context refreshed")).toBeVisible();
+    await expect(page.getByTestId("context-approved-state").getByText("Context active", { exact: true })).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(page).toHaveScreenshot("tenant-context-draft-saved.png");
   });
@@ -214,9 +214,9 @@ async function mockDashboard(page) {
   };
   await page.route("**/api/v1/companies**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [{ company_id: "company-a", name: "Company A" }, { company_id: "company-b", name: "Company B" }] }, meta: { request_id: "e2e" } }) }));
   await page.route("**/api/v1/dashboard/executive-summary**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { period: "24jam", startAt: "2026-01-01T00:00:00Z", endAt: "2026-01-02T00:00:00Z", items: [summaryItem], issues: [summaryItem], top5_limit: 5 }, meta: { request_id: "e2e" } }) }));
+  await page.route("**/api/v1/issues**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [issue("issue-12", "Issue outside top five")], meta: { page: 1, limit: 10, total: 1 } }, meta: { request_id: "e2e" } }) }));
   await page.route("**/api/v1/issues/issue-1", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { ...issue("issue-1", "Top issue"), articles: [], developments: [], analysis: null, priority: null }, meta: { request_id: "e2e" } }) }));
   await page.route("**/api/v1/issues/issue-12", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { ...issue("issue-12", "Issue outside top five"), articles: [], developments: [], analysis: null, priority: null }, meta: { request_id: "e2e" } }) }));
-  await page.route("**/api/v1/issues**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [issue("issue-12", "Issue outside top five")], meta: { page: 1, limit: 10, total: 1 } }, meta: { request_id: "e2e" } }) }));
   await mockNewsFeed(page);
 }
 

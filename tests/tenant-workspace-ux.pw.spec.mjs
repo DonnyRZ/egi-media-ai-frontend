@@ -61,7 +61,7 @@ test.describe("tenant owner/admin workspace UX gate", () => {
     });
 
     await page.goto("/id/settings/companies");
-    await expect(page.getByRole("main").getByRole("heading", { name: "Companies", exact: true })).toBeVisible();
+    await expect(page.getByRole("banner").getByRole("heading", { name: "Companies", exact: true })).toBeVisible();
     const companyRegistry = page.locator(".company-list-panel");
     await expect(companyRegistry.getByText("Company A")).toBeVisible();
     await expect(companyRegistry.getByText("Pending setup")).toBeVisible();
@@ -117,7 +117,7 @@ test.describe("tenant owner/admin workspace UX gate", () => {
     });
 
     await page.goto("/id/settings/access");
-    await expect(page.getByRole("main").getByRole("heading", { name: "Access", exact: true })).toBeVisible();
+    await expect(page.getByRole("banner").getByRole("heading", { name: "Access", exact: true })).toBeVisible();
     await expect(page.getByText("analyst@example.com")).toBeVisible();
     const roleSelect = page.getByRole("combobox", { name: "Role" });
     await roleSelect.click();
@@ -166,7 +166,7 @@ test.describe("tenant owner/admin workspace UX gate", () => {
       { id: "context-v1", version: 1, status: "archived", company_id: "company-a", fields: { company_name: "Company A", industry: "Technology" }, updated_at: "2026-07-01T08:00:00Z", management_identity: { status: "failed", lens_summary: null } },
     ];
     await seedCustomer(page, "tenant_owner");
-    await page.route("**/api/v1/companies/company-a/context/versions", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: versions, meta: { total: versions.length } }, meta: { request_id: "tenant-ux" } }) }));
+    await page.route((url) => url.pathname === "/api/v1/companies/company-a/context/versions", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: versions, meta: { total: versions.length, page: 1, limit: 20 } }, meta: { request_id: "tenant-ux" } }) }));
     await page.route("**/api/v1/companies/company-a/context", async (route) => {
       if (route.request().method() !== "DELETE") {
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { ...versions[0], management_identity: { status: "ready", lens_summary: "Leadership lens for Company A." } }, meta: { request_id: "tenant-ux" } }) });

@@ -121,7 +121,7 @@ export function LoginScreen() {
               </span>
             )}
             <div className="login-actions">
-              <button className="auth-primary-button login-submit" type="submit" disabled={isSubmitting}>
+              <button className="auth-primary-button login-submit" type="submit" aria-busy={isSubmitting} data-loading={isSubmitting} disabled={isSubmitting}>
                 {isSubmitting ? "Signing in..." : "Continue to workspace"}
                 <span><ArrowRight size={16} strokeWidth={2} aria-hidden="true" /></span>
               </button>

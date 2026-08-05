@@ -289,6 +289,7 @@
 .report-source-reference-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .report-source-reference-list li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--color-border); padding: 8px 0; color: var(--color-muted); font-size: 12px; }
 .report-source-reference-list li span { flex: 0 0 auto; font-weight: 700; }
+.report-source-reference-list li strong { color: var(--color-text); font-size: 12px; font-weight: 600; line-height: 1.45; text-align: right; overflow-wrap: anywhere; }
 .report-source-reference-list code { overflow-wrap: anywhere; color: var(--color-text); font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
 .report-operational-details { margin-top: 1.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-canvas); }
 .report-operational-details > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; list-style: none; padding: 14px 16px; }
@@ -1037,12 +1038,13 @@
 .citation-refs span + span::before { content: "·"; margin: 0 7px; color: var(--color-border-strong); }
 .drawer-link-list { display: grid; gap: 7px; }
 .source-row { display: grid; grid-template-columns: 1fr auto; gap: 7px; align-items: center; }
-.source-link, .source-unavailable { display: grid; grid-template-columns: 50px 1fr auto; gap: 9px; align-items: center; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 10px; color: inherit; text-decoration: none; }
+.source-link, .source-unavailable { display: flex; gap: 12px; align-items: flex-start; min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 11px 12px; color: inherit; text-decoration: none; }
 .source-link:hover { border-color: var(--color-primary-border); background: var(--color-primary-soft); }
 .source-unavailable { color: var(--color-muted); }
 .source-unavailable em { color: var(--color-medium); }
-.source-link span, .source-unavailable span { color: var(--color-muted); font-size: 12px; }
-.source-link strong, .source-unavailable strong { overflow: hidden; color: var(--color-ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.source-copy { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.source-title { color: var(--color-ink); font-size: 13px; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
+.source-meta { color: var(--color-muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .source-link em, .source-unavailable em { display: inline-flex; align-items: center; color: var(--color-primary); font-size: 13px; font-style: normal; }
 .source-preview-button { min-height: 48px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-primary); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; padding: 0 9px; }
 .source-preview-button:hover { border-color: var(--color-primary-border); background: var(--color-primary-soft); }
@@ -1072,7 +1074,8 @@
 .source-preview-card .drawer-close { position: absolute; top: 14px; right: 14px; }
 .source-preview-card.report-detail-card { width: min(760px, 100%); max-height: min(760px, calc(100dvh - 48px)); overflow: hidden; padding: 0; }
 .source-preview-card.report-detail-card .drawer-close { top: 18px; right: 18px; }
-.source-preview-card h3 { margin-top: 12px; color: var(--color-ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; overflow-wrap: anywhere; }
+.source-preview-card h3 { margin-top: 12px; color: var(--color-ink); font-family: var(--font-display); font-size: 22px; line-height: 1.25; overflow-wrap: anywhere; }
+.source-preview-meta { display: block; margin-top: 8px; color: var(--color-muted); font-size: 13px; line-height: 1.4; }
 .source-preview-card p { margin-top: 15px; color: var(--color-muted); font-size: 14px; line-height: 1.65; }
 .source-locale-badge, .source-unavailable-badge { display: inline-block; margin-top: 14px; color: var(--color-muted); font-size: 13px; font-weight: 600; letter-spacing: .02em; }
 .source-unavailable-badge { color: var(--color-medium-text); }

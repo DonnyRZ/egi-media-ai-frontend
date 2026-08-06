@@ -1589,9 +1589,10 @@
   background: #eef4ff;
   color: #2864df;
 }
+/* Platform shell already omits search/notifications in JSX; do not hide
+   .header-menu-wrap here — that is the profile menu with Sign out. */
 .platform-header-actions .global-search-wrap,
-.platform-header-actions .global-search,
-.platform-header-actions > .header-menu-wrap:first-of-type { display: none; }
+.platform-header-actions .global-search { display: none; }
 .sidebar-section-label-secondary { margin-top: 26px; }
 .sidebar-link-disabled { cursor: default; opacity: .62; }
 .sidebar-link-disabled:hover { background: transparent; color: inherit; }

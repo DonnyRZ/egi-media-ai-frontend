@@ -17,7 +17,13 @@ export function SavedIssueControl({ issueId }: { issueId: string }) {
   const companyId = useSessionStore((state) => state.activeCompanyId);
   const allowed = useSessionStore((state) => state.permissions.includes("issue.save"));
   const client = useQueryClient();
-  const query = useQuery({ queryKey: ["saved-issue-status", companyId, issueId], queryFn: () => readSavedStatus(issueId), enabled: Boolean(companyId && allowed && issueId), staleTime: 15_000, retry: 1 });
+  const query = useQuery({
+    queryKey: ["saved-issue-status", companyId, issueId],
+    queryFn: () => readSavedStatus(issueId),
+    enabled: Boolean(companyId && allowed && issueId),
+    staleTime: 15_000,
+    retry: 1,
+  });
   const saved = query.data?.saved === true;
   const [optimisticSaved, setOptimisticSaved] = useState<boolean | null>(null);
   useEffect(() => setOptimisticSaved(null), [issueId, companyId]);
@@ -31,7 +37,22 @@ export function SavedIssueControl({ issueId }: { issueId: string }) {
     },
   });
   if (!allowed) return null;
-  return <><button className={`source-preview-button ${effectiveSaved ? "is-active" : ""}`} aria-pressed={effectiveSaved} aria-busy={mutation.isPending} data-loading={mutation.isPending} disabled={mutation.isPending || query.isLoading || query.isError} onClick={() => mutation.mutate()}>{mutation.isPending ? "Saving..." : effectiveSaved ? "Unsave issue" : "Save issue"}</button>{query.isError && <span className="drawer-action-error" role="alert">{savedError(query.error)}</span>}{mutation.isError && <span className="drawer-action-error" role="alert">{savedError(mutation.error)}</span>}</>;
+  return (
+    <>
+      <button
+        className={`source-preview-button ${effectiveSaved ? "is-active" : ""}`}
+        aria-pressed={effectiveSaved}
+        aria-busy={mutation.isPending}
+        data-loading={mutation.isPending}
+        disabled={mutation.isPending || query.isLoading || query.isError}
+        onClick={() => mutation.mutate()}
+      >
+        {mutation.isPending ? "Saving..." : effectiveSaved ? "Unsave issue" : "Save issue"}
+      </button>
+      {query.isError && <span className="drawer-action-error" role="alert">{savedError(query.error)}</span>}
+      {mutation.isError && <span className="drawer-action-error" role="alert">{savedError(mutation.error)}</span>}
+    </>
+  );
 }
 
 export function savedError(error: unknown) { return isAxiosError<{ error?: { message?: string } }>(error) ? error.response?.data?.error?.message ?? "Saved issues could not be loaded." : "Saved issues could not be loaded."; }

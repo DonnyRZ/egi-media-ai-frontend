@@ -32,8 +32,17 @@ function formatSavedAt(value: string | null | undefined) {
   return date.toLocaleDateString();
 }
 
+function priorityLabel(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value;
+  if (value && typeof value === "object" && typeof (value as { priority?: unknown }).priority === "string") {
+    const nested = (value as { priority: string }).priority.trim();
+    if (nested) return nested;
+  }
+  return "unprioritized";
+}
+
 function isRenderableSavedIssue(item: SavedIssueDto | null | undefined): item is SavedIssueDto {
-  return Boolean(item?.issue_id && item.issue?.issue_id && item.issue?.title);
+  return Boolean(item?.issue_id && item.issue?.issue_id && typeof item.issue?.title === "string" && item.issue.title);
 }
 
 export function SavedIssues() {
@@ -121,8 +130,8 @@ function SavedIssuesBody() {
                     <h2>{item.issue?.title ?? "Untitled issue"}</h2>
                     <p>{item.issue?.one_liner || "No one-liner available."}</p>
                     <div className="badge-row issue-list-meta">
-                      <span className={`meta-tag meta-priority meta-priority-${item.issue?.priority ?? "rendah"}`}>
-                        {item.issue?.priority ?? "unprioritized"}
+                      <span className={`meta-tag meta-priority meta-priority-${priorityLabel(item.issue?.priority)}`}>
+                        {priorityLabel(item.issue?.priority)}
                       </span>
                     </div>
                   </div>

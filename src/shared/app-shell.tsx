@@ -211,32 +211,6 @@ const platformNavigation = [
   { href: "/settings/platform", label: "Platform overview", icon: "building" as const },
 ];
 
-const PAGE_TITLES: Array<[prefix: string, title: string]> = [
-  ["/settings/company-context/draft", "Company Context"],
-  ["/settings/company-context", "Company Context"],
-  ["/settings/alert-preferences", "Alert preferences"],
-  ["/settings/news-intake", "News intake"],
-  ["/settings/display-language", "Display language"],
-  ["/settings/companies", "Companies"],
-  ["/settings/platform", "Platform overview"],
-  ["/settings/platform/health", "System health"],
-  ["/settings/platform/audit-log", "Audit log"],
-  ["/settings/access", "Access"],
-  ["/settings/audit-log", "Audit log"],
-  ["/settings", "Settings"],
-  ["/issues", "News Feed"],
-  ["/alerts", "Alerts"],
-  ["/reports", "Reports"],
-  ["/saved", "Saved Issues"],
-];
-
-function pageTitleFor(path: string) {
-  for (const [prefix, title] of PAGE_TITLES) {
-    if (path.startsWith(prefix)) return title;
-  }
-  return "Executive Summary";
-}
-
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -338,9 +312,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const activePath = pendingHref ?? pathname;
   const canOpenProvisioning = isPlatformAdmin;
   const showPlatformOverview = isPlatformAdmin && !pathname.startsWith("/settings/platform");
-  const headerTitle = !isPlatformAdmin && pathname.startsWith("/settings/platform")
-    ? "Access restricted"
-    : showPlatformOverview ? "Platform overview" : pageTitleFor(activePath);
 
   function handleNavigate(href: string, event: MouseEvent<HTMLAnchorElement>) {
     // Soft nav under our control so optimistic UI does not interrupt the transition.
@@ -574,7 +545,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="app-header">
           <div className="header-left">
             <button className="shell-icon-button mobile-menu" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation"><Icon name="menu" /></button>
-            <h1 className="page-title">{headerTitle}</h1>
           {isPlatformAdmin ? (
             <div className="platform-scope-chip" aria-label="Platform control plane">
               <span className="platform-scope-icon"><Icon name="building" size={17} /></span>

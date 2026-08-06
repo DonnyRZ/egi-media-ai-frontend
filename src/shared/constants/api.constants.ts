@@ -22,6 +22,7 @@ export const API_ENDPOINTS = {
   articleSource: (articleId: string) => `/api/v1/articles/${articleId}/source`,
   savedIssues: "/api/v1/saved/issues",
   issueSaved: (issueId: string) => `/api/v1/issues/${issueId}/saved`,
+  issueSavedStatus: (issueId: string) => `/api/v1/issues/${issueId}/saved`,
   issueComplete: (issueId: string) => `/api/v1/issues/${issueId}/complete`,
   inboxEmails: "/api/v1/inbox/emails",
   inboxEmailRead: (emailId: string) => `/api/v1/inbox/emails/${emailId}/read`,

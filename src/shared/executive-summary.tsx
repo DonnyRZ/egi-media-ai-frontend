@@ -106,7 +106,6 @@ function ExecutiveSummaryBody() {
       <div className="page-context summary-page-context">
         <div className="summary-page-context-copy">
           <PeriodTabs period={period} onChange={setPeriod} />
-          <span className="supporting-text">The 3–5 issues that deserve executive attention in this period.</span>
           {query.isFetching && !query.isLoading && <span className="period-refresh-status" role="status" aria-busy="true"><BusyLabel>Updating...</BusyLabel></span>}
         </div>
       </div>
@@ -122,21 +121,7 @@ function ExecutiveSummaryBody() {
 }
 
 function PeriodTabs({ period, onChange }: { period: Period; onChange: (period: Period) => void }) {
-  return (
-    <div className="summary-period-tabs" role="group" aria-label="Summary period">
-      {PERIOD_OPTIONS.map((option) => (
-        <button
-          type="button"
-          className="summary-period-tab"
-          aria-pressed={period === option.value}
-          key={option.value}
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
+  return <label className="summary-period-select"><span className="sr-only">Summary period</span><select aria-label="Summary period" value={period} onChange={(event) => onChange(event.target.value as Period)}>{PERIOD_OPTIONS.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>;
 }
 
 function SummaryContent({ data, period, contextUnavailable = false }: { data: ExecutiveSummaryDto; period: Period; contextUnavailable?: boolean }) {

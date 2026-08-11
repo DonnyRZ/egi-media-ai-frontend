@@ -14,7 +14,7 @@ test.describe("platform scope boundary", () => {
     for (const path of ["/id", "/id/issues", "/id/alerts", "/id/reports", "/id/saved", "/id/settings", "/id/settings/companies", "/id/settings/access", "/id/settings/company-context"]) {
       await page.goto(path);
       await expect(page).toHaveURL(/\/id\/settings\/platform\/?$/, { timeout: 15_000 });
-      await expect(page.getByRole("heading", { name: "Workspace registry" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("heading", { name: "Customer workspaces" })).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("company-switcher")).toHaveCount(0);
       await expect(page.getByPlaceholder("Search intelligence")).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Platform overview" })).toBeVisible();

@@ -1690,6 +1690,9 @@
 .platform-primary-button,
 .platform-secondary-button,
 .platform-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid transparent;
   border-radius: 11px;
   padding: 11px 15px;
@@ -1697,6 +1700,7 @@
   font-size: 13px;
   font-weight: 750;
   line-height: 1;
+  text-decoration: none;
   cursor: pointer;
   transition: background .15s ease, border-color .15s ease, transform .15s ease;
 }
@@ -1776,13 +1780,21 @@
 .platform-form-section { margin-top: 22px; padding-top: 22px; border-top: 1px solid #edf0f4; }
 .platform-form-section h3 { margin: 0 0 5px; color: #253552; font-size: 15px; }
 .platform-form-section > p { margin: 0 0 14px; color: #7b879a; font-size: 12px; line-height: 1.5; }
+.platform-form-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.platform-form-section-heading h3 { margin: 0 0 5px; }
+.platform-form-section-heading p { margin: 0; }
+.platform-form-section-heading .platform-secondary-button { flex-shrink: 0; white-space: nowrap; }
 .platform-owner-locked { margin-top: 4px; padding: 15px; border: 1px dashed #d6dee9; border-radius: 12px; background: #fafbfd; }
-.platform-company-list { display: grid; gap: 8px; }
-.platform-company-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid #e8ecf2; border-radius: 11px; }
+.platform-company-list-header { display: flex; align-items: center; gap: 8px; margin: 18px 0 10px; color: #8a96a8; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+.platform-company-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 6px; border-radius: 999px; background: #edf1f7; color: #56637a; font-size: 11px; font-weight: 700; }
+.platform-company-list { display: grid; gap: 8px; margin-bottom: 4px; }
+.platform-company-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid #e8ecf2; border-radius: 11px; background: #fff; }
 .platform-company-row strong { color: #263858; font-size: 13px; }
 .platform-company-row small { color: #8a96a8; font-size: 11px; }
+.platform-add-company-form { margin-top: 16px; }
 .platform-owner-form { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 170px max-content; align-items: end; gap: 10px; }
 .platform-owner-form .platform-field { min-width: 0; }
+.platform-add-owner-form { margin-top: 16px; }
 .platform-success { display: grid; gap: 7px; margin-top: 14px; padding: 14px 16px; border: 1px solid #c9ead9; border-radius: 13px; background: #f2fbf6; color: #176747; }
 .platform-success strong { font-size: 13px; }
 .platform-success span { color: #4b7863; font-size: 12px; }
@@ -1999,7 +2011,7 @@
 .platform-readonly-callout { margin: 0 0 20px; }
 .platform-readonly-callout strong, .platform-readonly-panel strong { color: #8f2e24; font-size: 12px; }
 .platform-readonly-callout span, .platform-readonly-panel span { color: #95635d; font-size: 12px; line-height: 1.45; }
-.platform-readonly-panel { border-color: #e1e6ed; background: #fafbfd; color: #5f6f87; }
+.platform-readonly-panel { margin-top: 14px; border-color: #e1e6ed; background: #fafbfd; color: #5f6f87; }
 .platform-readonly-panel strong { color: #34425a; }
 .platform-readonly-panel span { color: #71809a; }
 .platform-primary-button.is-danger { background: #a92c21; }
@@ -2022,6 +2034,23 @@
 .platform-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
 .platform-modal-actions .platform-primary-button, .platform-modal-actions .platform-secondary-button { min-width: 132px; }
 .platform-primary-button:focus-visible, .platform-secondary-button:focus-visible, .platform-row-action:focus-visible, .platform-action-button:focus-visible, .platform-status-filters button:focus-visible { outline: 3px solid rgb(40 100 223 / 22%); outline-offset: 2px; }
+
+/* Workspace detail page: entry point back to the registry, and a clear split
+   between safe lifecycle actions and destructive ones. */
+.platform-section-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.platform-back-link { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 18px; color: #5c6b84; font-size: 13px; font-weight: 750; text-decoration: none; }
+.platform-back-link:hover { color: #2864df; }
+.platform-back-link:focus-visible { outline: 3px solid rgb(40 100 223 / 22%); outline-offset: 3px; border-radius: 6px; }
+.platform-tenant-id-line { margin: 4px 0 0; color: #8a96a8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.platform-lifecycle-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 18px; flex-wrap: wrap; margin: 6px 0 24px; }
+.platform-lifecycle-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.platform-lifecycle-group.is-danger { padding-left: 16px; border-left: 1px solid var(--color-border); }
+.platform-danger-label { margin-right: 2px; color: #a62b20; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+
+@media (max-width: 620px) {
+  .platform-lifecycle-toolbar { justify-content: flex-start; }
+  .platform-lifecycle-group.is-danger { padding-left: 0; border-left: 0; padding-top: 10px; border-top: 1px dashed var(--color-border); width: 100%; }
+}
 
 @media (max-width: 980px) {
   .platform-metrics-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2046,8 +2075,15 @@
   .platform-modal-actions .platform-primary-button, .platform-modal-actions .platform-secondary-button { min-width: 0; width: 100%; }
 }
 
-/* Scalable workspace registry controls. */
-.platform-tenant-row { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto minmax(112px, auto) auto auto; }
+/* Scalable workspace registry controls. The checkbox column is only present
+   in select mode; explicit grid-column assignments keep the remaining
+   columns aligned whether or not it renders. */
+.platform-tenant-row { display: grid; grid-template-columns: auto minmax(180px, 1fr) auto minmax(112px, auto) auto; }
+.platform-tenant-row > .platform-tenant-checkbox { grid-column: 1; }
+.platform-tenant-row > .platform-tenant-meta { grid-column: 2; }
+.platform-tenant-row > .platform-tenant-status { grid-column: 3; }
+.platform-tenant-row > .platform-tenant-updated { grid-column: 4; }
+.platform-tenant-row > .platform-row-actions { grid-column: 5; }
 .platform-registry-controls { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 16px 0; }
 .platform-registry-controls:has(.inline-loading) .platform-results-summary { display: none; }
 .platform-search-field { display: grid; flex: 1; gap: 6px; max-width: 520px; }

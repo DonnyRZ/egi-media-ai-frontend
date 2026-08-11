@@ -22,8 +22,10 @@ test.describe("platform workspace lifecycle UX", () => {
 
     await loginAsPlatformSuperadmin(page);
     await page.goto("/id/settings/platform");
-    await expect(page.getByRole("heading", { name: "Workspace registry" })).toBeVisible();
-    await page.getByRole("button", { name: "Open workspace" }).click();
+    await expect(page.getByRole("heading", { name: "Customer workspaces" })).toBeVisible();
+    await page.getByRole("link", { name: "Open workspace" }).click();
+    await expect(page).toHaveURL(/\/id\/settings\/platform\/tenants\/tenant-lifecycle$/);
+    await expect(page.getByRole("heading", { name: "Lifecycle Review Workspace" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Suspend workspace" })).toBeVisible();
 
     await page.getByRole("button", { name: "Suspend workspace" }).click();
@@ -43,6 +45,9 @@ test.describe("platform workspace lifecycle UX", () => {
     await expect(page.getByText("Provisioning paused", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Company name")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Archive workspace" })).toBeVisible();
+
+    await page.getByRole("link", { name: "← Workspace registry" }).click();
+    await expect(page).toHaveURL(/\/id\/settings\/platform\/?$/);
     const statusSelect = page.getByRole("combobox", { name: "Filter workspace status" });
     await statusSelect.click();
     await page.getByRole("option", { name: /Suspended 1/ }).click();
@@ -50,6 +55,8 @@ test.describe("platform workspace lifecycle UX", () => {
 
     await statusSelect.click();
     await page.getByRole("option", { name: /All 1/ }).click();
+    await page.getByRole("link", { name: "Open workspace" }).click();
+    await expect(page).toHaveURL(/\/id\/settings\/platform\/tenants\/tenant-lifecycle$/);
     await page.getByRole("button", { name: "Archive workspace" }).click();
     const archiveDialog = page.getByRole("dialog", { name: "Archive this workspace?" });
     await archiveDialog.getByRole("textbox", { name: /Reason/ }).fill("Customer did not renew the service");

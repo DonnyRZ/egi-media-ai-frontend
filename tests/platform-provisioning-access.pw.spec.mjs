@@ -4,9 +4,10 @@ import { loginAsPlatformSuperadmin, PLATFORM_PERMISSIONS } from "./support/scope
 test.describe("Loop A/B platform_superadmin provisioning", () => {
   test("session permissions unlock provisioning UX", async ({ page }) => {
     test.setTimeout(90_000);
-    const capture = { login: { status: 200, role: "platform_superadmin", tenant_id: null }, session: { status: 200, role: "platform_superadmin", permissions: PLATFORM_PERMISSIONS, hasManage: true } };
     let tenants = [{ tenant_id: "tenant-egiresources", name: "EGI Resources", status: "active" }];
-    let companies = [{ company_id: "company-agat", name: "AGAT Laser Beam", status: "active" }];
+    const companiesByTenant = { "tenant-egiresources": [{ company_id: "company-agat", name: "AGAT Laser Beam", status: "active" }] };
+    const membershipsByTenant = { "tenant-egiresources": [] };
+
     await page.route((url) => url.pathname === "/api/v1/platform/tenants", async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: tenants, meta: { page: 1, limit: 100, total: tenants.length } } }) });
@@ -15,20 +16,42 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
       const body = route.request().postDataJSON();
       const tenant = { tenant_id: "tenant-northstar", name: body.name, status: "pending" };
       tenants = [tenant, ...tenants];
+      companiesByTenant[tenant.tenant_id] = [];
+      membershipsByTenant[tenant.tenant_id] = [];
       await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { tenant }, meta: { request_id: "platform-provisioning" } }) });
     });
-    await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-egiresources/companies", async (route) => {
+    await page.route((url) => /\/tenants\/[^/]+\/companies$/.test(url.pathname), async (route) => {
+      const tenantId = route.request().url().match(/tenants\/([^/]+)\/companies/)[1];
       if (route.request().method() === "GET") {
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: companies, meta: { page: 1, limit: 100, total: companies.length } } }) });
+        const items = companiesByTenant[tenantId] || [];
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items, meta: { page: 1, limit: 100, total: items.length } } }) });
         return;
       }
       const body = route.request().postDataJSON();
-      const company = { company_id: "company-northstar", name: body.name, status: "pending" };
-      companies = [company, ...companies];
+      const company = { company_id: `company-${tenantId}-new`, name: body.name, status: "pending" };
+      companiesByTenant[tenantId] = [company, ...(companiesByTenant[tenantId] || [])];
       await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { company }, meta: { request_id: "platform-provisioning" } }) });
     });
-    await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-egiresources/owner", async (route) => route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { membership_id: "membership-owner", status: "invited" }, meta: { request_id: "platform-provisioning" } }) }));
-    await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-egiresources/memberships", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [], meta: { page: 1, limit: 100, total: 0 } } }) }));
+    await page.route((url) => /\/tenants\/[^/]+\/owner$/.test(url.pathname), async (route) => {
+      const tenantId = route.request().url().match(/tenants\/([^/]+)\/owner/)[1];
+      const body = route.request().postDataJSON();
+      const membership = {
+        membership_id: `membership-owner-${tenantId}`,
+        user_id: `user:${body.email}`,
+        role: "tenant_owner",
+        status: "invited",
+        company_id: body.company_id || null,
+        email: body.email,
+        full_name: body.full_name || null,
+      };
+      membershipsByTenant[tenantId] = [membership, ...(membershipsByTenant[tenantId] || [])];
+      await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { membership, reused: false }, meta: { request_id: "platform-provisioning" } }) });
+    });
+    await page.route((url) => /\/tenants\/[^/]+\/memberships$/.test(url.pathname), async (route) => {
+      const tenantId = route.request().url().match(/tenants\/([^/]+)\/memberships/)[1];
+      const items = membershipsByTenant[tenantId] || [];
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items, meta: { page: 1, limit: 100, total: items.length } } }) });
+    });
     await loginAsPlatformSuperadmin(page);
 
     await page.goto("/id/settings/platform");
@@ -41,14 +64,12 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     const provisioningTitle = page.getByRole("heading", { name: /customer workspaces/i });
 
     // Loop A assert
-    expect(capture.session?.hasManage).toBe(true);
+    expect(PLATFORM_PERMISSIONS).toContain("platform.tenants.manage");
     await expect(forbidden).toHaveCount(0, { timeout: 15_000 });
     await expect(provisioningTitle).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("alert").filter({ hasText: /could not load tenants|tenants are unavailable/i })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "System health", exact: true })).toBeVisible();
-    await expect(page.locator("a.platform-capability-link").filter({ hasText: "System health" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Audit log", exact: true })).toBeVisible();
-    await expect(page.locator("a.platform-capability-link").filter({ hasText: "Audit log" })).toBeVisible();
     await expect(page).toHaveScreenshot("platform-provisioning-initial.png", { fullPage: true });
 
     await page.getByRole("button", { name: "New workspace" }).click();
@@ -57,13 +78,14 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     await expect(page).toHaveScreenshot("platform-provisioning-new-workspace-empty.png", { fullPage: true });
     await page.getByLabel("Tenant name").fill("Northstar Workspace");
     await page.getByRole("button", { name: "Create workspace" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Workspace created." })).toBeVisible();
+    await expect(page).toHaveURL(/\/id\/settings\/platform\/tenants\/tenant-northstar$/, { timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "Northstar Workspace" })).toBeVisible();
 
     // Loop B: EGI Resources tenant + AGAT company
+    await page.getByRole("link", { name: "← Workspace registry" }).click();
     const egiRow = page.locator(".platform-tenant-row").filter({ hasText: /EGI Resources/i }).first();
     await expect(egiRow).toBeVisible({ timeout: 15_000 });
-    await egiRow.getByRole("button", { name: "Open workspace" }).click();
+    await egiRow.getByRole("link", { name: "Open workspace" }).click();
     await expect(page.getByText(/AGAT Laser Beam/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("alert").filter({ hasText: /could not load companies|companies are unavailable/i })).toHaveCount(0);
     await expect(page.getByLabel("Owner email")).toBeVisible();
@@ -71,6 +93,7 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     await page.mouse.move(0, 0);
     await expect(page).toHaveScreenshot("platform-provisioning-selected-workspace.png", { fullPage: true });
 
+    await page.getByRole("button", { name: "+ Add company" }).click();
     await page.getByLabel("Company name").fill("Northstar Analytics");
     await page.getByRole("button", { name: "Create company" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Company created." })).toBeVisible();

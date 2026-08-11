@@ -17,10 +17,13 @@ test.describe("platform owner-assignment handoff", () => {
       if (route.request().method() !== "POST") return route.fallback();
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { membership: { role: "tenant_owner", status: "invited" } }, meta: { request_id: "scope-test" } }) });
     });
+    await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-4/memberships", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [], meta: { page: 1, limit: 100, total: 0 } } }) }));
 
     await loginAsPlatformSuperadmin(page);
-    await page.locator(".platform-tenant-row").filter({ hasText: "Sprint4 Workspace" }).getByRole("button", { name: "Open workspace" }).click();
-    await expect(page.getByText("Selected workspace", { exact: true })).toBeVisible();
+    await page.goto("/id/settings/platform");
+    await page.locator(".platform-tenant-row").filter({ hasText: "Sprint4 Workspace" }).getByRole("link", { name: "Open workspace" }).click();
+    await expect(page).toHaveURL(/\/id\/settings\/platform\/tenants\/tenant-4$/);
+    await expect(page.getByRole("heading", { name: "Sprint4 Workspace" })).toBeVisible();
     await page.getByLabel("Owner email").fill("owner@sprint4.test");
     await expect(page.getByLabel("Owner email")).toHaveValue("owner@sprint4.test");
     await page.getByLabel("Owner full name").fill("Sprint4 Owner");

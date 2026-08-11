@@ -218,7 +218,7 @@ test.describe("tenant owner/admin workspace UX gate", () => {
     });
 
     await page.goto("/id/settings/audit-log");
-    await expect(page.getByRole("main").getByRole("heading", { name: "Audit log", exact: true })).toBeVisible();
+    await expect(page.getByRole("main").getByLabel("Audit filters")).toBeVisible();
     await expect(page.getByRole("region", { name: "Tenant audit events" })).toBeVisible();
     await expect(page.getByText("Tenant.Members.Manage")).toBeVisible();
     await expect(page.getByRole("region", { name: "Tenant audit events" }).getByText("Allowed")).toBeVisible();

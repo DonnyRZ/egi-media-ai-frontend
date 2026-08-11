@@ -27,7 +27,7 @@ test.describe("platform operational-surface boundary", () => {
     for (const path of ["/id", "/id/issues", "/id/alerts", "/id/reports", "/id/saved"]) {
       await page.goto(path, { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(/\/id\/settings\/platform\/?$/, { timeout: 15_000 });
-      await expect(page.getByRole("heading", { name: "Workspace registry" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Customer workspaces" })).toBeVisible();
     }
   });
 });

@@ -47,19 +47,9 @@ export function PlatformHealth() {
 
   const health = query.data;
   const requestCount = health.metrics?.counters?.filter((item) => item.name === "http_requests_total").reduce((sum, item) => sum + item.value, 0) ?? 0;
-  const statusReady = health.status === "ready";
 
   return (
     <div className="platform-ops-page">
-      <header className="platform-ops-header">
-        <div>
-          <p className="platform-eyebrow">Platform operations</p>
-          <h1>System health</h1>
-          <p>Live service checks for the EGI Media AI control plane.</p>
-        </div>
-        <span className={`platform-ops-status ${statusReady ? "is-ready" : "is-attention"}`}><i /> {statusReady ? "Operational" : "Degraded"}</span>
-      </header>
-
       <section className="platform-ops-summary" aria-label="System health summary">
         <div className="platform-ops-summary-card"><span>Service</span><strong>{health.service}</strong></div>
         <div className="platform-ops-summary-card"><span>Environment</span><strong>{health.environment}</strong></div>

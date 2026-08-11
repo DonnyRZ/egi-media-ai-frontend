@@ -12,7 +12,7 @@ test.describe("platform boundary around customer-scoped settings", () => {
     for (const path of ["/id/settings/company-context", "/id/settings/company-context/draft", "/id/settings/alert-preferences", "/id/settings/news-intake"]) {
       await page.goto(path);
       await expect(page).toHaveURL(/\/id\/settings\/platform\/?$/, { timeout: 15_000 });
-      await expect(page.getByRole("heading", { name: "Workspace registry" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Customer workspaces" })).toBeVisible();
       await expect(page.getByRole("heading", { name: /Build Company Context|Alert preferences|News intake/i })).toHaveCount(0);
     }
   });
@@ -24,8 +24,8 @@ test.describe("platform boundary around customer-scoped settings", () => {
       body: JSON.stringify({ success: true, data: { items: [], meta: { page: 1, limit: 100, total: 0 } } }),
     }));
     await loginAsPlatformSuperadmin(page);
-    await expect(page.getByText("Platform control plane")).toBeVisible();
-    await expect(page.getByText("Provision and operate customer workspaces from one registry.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Customer workspaces" })).toBeVisible();
+    await expect(page.getByText("No customer workspaces yet")).toBeVisible();
     await expect(page.getByText("No active signals in this period")).toHaveCount(0);
     await expect(page.getByText("No stories yet")).toHaveCount(0);
   });

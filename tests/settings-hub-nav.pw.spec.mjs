@@ -13,8 +13,7 @@ test.describe("platform navigation", () => {
   test("platform overview is the stable destination for an unscoped superadmin", async ({ page }) => {
     await stubTenants(page, []);
     await loginAsPlatformSuperadmin(page);
-    await expect(page.getByRole("heading", { name: "Platform overview" }).first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Workspace registry" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Customer workspaces" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Platform overview" })).toHaveAttribute("href", "/id/settings/platform");
   });
 

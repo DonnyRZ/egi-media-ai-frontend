@@ -15,8 +15,7 @@ test.describe("platform operations surfaces", () => {
     await page.route("**/api/v1/platform/health", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: health, meta: { request_id: "ops-test" } }) }));
     await loginAsPlatformSuperadmin(page);
     await page.goto("/id/settings/platform/health");
-    await expect(page.getByRole("heading", { name: "System health" })).toBeVisible();
-    await expect(page.getByText("Operational")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Runtime components" })).toBeVisible();
     await expect(page.getByText("Ai Provider")).toBeVisible();
     await expect(page.getByText("12")).toBeVisible();
     await expect(page).toHaveScreenshot("platform-health-desktop.png", { fullPage: true });
@@ -31,7 +30,7 @@ test.describe("platform operations surfaces", () => {
     });
     await loginAsPlatformSuperadmin(page);
     await page.goto("/id/settings/platform/audit-log");
-    await expect(page.getByRole("heading", { name: "Audit log" })).toBeVisible();
+    await expect(page.getByLabel("Audit filters")).toBeVisible();
     await expect(page.getByRole("cell", { name: "Platform.Tenants.Manage" })).toBeVisible();
     await expect(page.getByLabel("Platform audit events").getByText("Allowed")).toBeVisible();
     await page.getByRole("combobox", { name: "Outcome" }).click();

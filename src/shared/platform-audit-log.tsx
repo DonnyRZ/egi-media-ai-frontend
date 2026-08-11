@@ -41,7 +41,7 @@ export function PlatformAuditLog() {
       permission="platform.tenants.manage"
       fallback={<div className="standard-state standard-state-forbidden"><h2>Platform audit restricted</h2><p>Platform audit events are available only to platform administrators.</p></div>}
     >
-      <AuditLog endpoint={API_ENDPOINTS.platformAuditEvents} eyebrow="Platform operations" description="Review access decisions and platform actions with their scope and outcome." tableLabel="Platform audit events" emptyMessage="Platform access decisions will appear here as the control plane is used." />
+      <AuditLog endpoint={API_ENDPOINTS.platformAuditEvents} eyebrow="Platform operations" tableLabel="Platform audit events" emptyMessage="Platform access decisions will appear here as the control plane is used." />
     </PermissionGate>
   );
 }
@@ -58,7 +58,7 @@ export function TenantAuditLog() {
       nextStep="Ask a tenant owner or platform administrator to grant this account workspace access."
     >
       {canRead ? (
-        <AuditLog endpoint={API_ENDPOINTS.tenantAuditEvents} eyebrow="Workspace administration" description="Review access decisions and workspace actions for this tenant." tableLabel="Tenant audit events" emptyMessage="Access decisions will appear here as this workspace is used." />
+        <AuditLog endpoint={API_ENDPOINTS.tenantAuditEvents} eyebrow="Workspace administration" tableLabel="Tenant audit events" emptyMessage="Access decisions will appear here as this workspace is used." />
       ) : (
         <div className="standard-state standard-state-forbidden"><h2>Audit log restricted</h2><p>Your role cannot review workspace audit events.</p></div>
       )}
@@ -66,18 +66,13 @@ export function TenantAuditLog() {
   );
 }
 
-function AuditLog({ endpoint, eyebrow, description, tableLabel, emptyMessage }: { endpoint: string; eyebrow: string; description: string; tableLabel: string; emptyMessage: string }) {
+function AuditLog({ endpoint, eyebrow, tableLabel, emptyMessage }: { endpoint: string; eyebrow: string; tableLabel: string; emptyMessage: string }) {
   const [action, setAction] = useState("");
   const [outcome, setOutcome] = useState("");
   const query = useQuery({ queryKey: [endpoint, action, outcome], queryFn: () => readAudit(endpoint, action, outcome), staleTime: 15_000, retry: 1 });
 
   return (
     <div className="platform-ops-page">
-      <header className="platform-ops-header">
-        <div><p className="platform-eyebrow">{eyebrow}</p><h1>Audit log</h1><p>{description}</p></div>
-        <FileClock size={28} strokeWidth={1.6} aria-hidden="true" className="platform-ops-header-icon" />
-      </header>
-
       <section className="platform-ops-toolbar" aria-label="Audit filters">
         <label><span>Action</span><input value={action} onChange={(event) => setAction(event.target.value)} placeholder="Filter by action" /></label>
         <label>

@@ -28,7 +28,7 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
         return;
       }
       const body = route.request().postDataJSON();
-      const company = { company_id: `company-${tenantId}-new`, name: body.name, status: "pending" };
+    const company = { company_id: `company-${tenantId}-new`, name: body.name, status: "active" };
       companiesByTenant[tenantId] = [company, ...(companiesByTenant[tenantId] || [])];
       await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { company }, meta: { request_id: "platform-provisioning" } }) });
     });
@@ -78,7 +78,10 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     await expect(page).toHaveScreenshot("platform-provisioning-new-workspace-empty.png", { fullPage: true });
     await page.getByLabel("Tenant name").fill("Northstar Workspace");
     await page.getByRole("button", { name: "Create workspace" }).click();
-    await expect(page).toHaveURL(/\/id\/settings\/platform\/tenants\/tenant-northstar$/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/id\/settings\/platform$/, { timeout: 15_000 });
+    await expect(page.getByRole("status").filter({ hasText: "Workspace created. Open Northstar Workspace when you're ready." })).toBeVisible();
+    await expect(page.locator(".platform-tenant-row").filter({ hasText: /Northstar Workspace/i }).first()).toBeVisible();
+    await page.locator(".platform-tenant-row").filter({ hasText: /Northstar Workspace/i }).first().getByRole("link", { name: "Open workspace" }).click();
     await expect(page.getByRole("heading", { name: "Northstar Workspace" })).toBeVisible();
 
     // Loop B: EGI Resources tenant + AGAT company

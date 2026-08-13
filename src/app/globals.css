@@ -436,6 +436,11 @@
 .login-form-wrap input { height: 48px; border: 1px solid var(--color-border); border-radius: var(--radius-md); outline: 0; padding: 0 14px; color: var(--color-ink); font: inherit; font-size: 15px; transition: border-color var(--motion-standard) var(--motion-easing), box-shadow var(--motion-standard) var(--motion-easing); }
 .login-form-wrap input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
 .login-form-wrap input[aria-invalid="true"] { border-color: var(--color-high); }
+.password-field { position: relative; }
+.password-field input { width: 100%; padding-right: 46px; }
+.password-toggle-button { position: absolute; top: 50%; right: 5px; display: inline-flex; width: 38px; height: 38px; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: var(--color-muted); cursor: pointer; transform: translateY(-50%); transition: background var(--motion-fast) var(--motion-easing), color var(--motion-fast) var(--motion-easing); }
+.password-toggle-button:hover { background: var(--color-canvas); color: var(--color-ink); }
+.password-toggle-button:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--color-primary-soft); color: var(--color-primary); }
 .login-error { color: var(--color-high); font-size: 14px; }
 .auth-primary-button { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: var(--radius-md); background: var(--color-ink); color: white; cursor: pointer; font: inherit; font-size: 15px; font-weight: 700; padding: 0 18px; white-space: nowrap; transition: background var(--motion-standard) var(--motion-easing), transform var(--motion-standard) var(--motion-easing); }
 .auth-primary-button:hover { background: var(--color-primary); transform: translateY(-1px); }
@@ -1055,8 +1060,7 @@
 .platform-owner-form[aria-busy="true"] .platform-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: wait; opacity: .78; }
 .platform-primary-button[data-loading="true"]::before,
 .platform-inline-form[aria-busy="true"] > .platform-primary-button::before,
-.platform-owner-form[aria-busy="true"] .platform-primary-button::before,
-.platform-modal form:has(.platform-primary-button:disabled) .platform-primary-button::before { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: auth-spin .8s linear infinite; content: ""; }
+.platform-owner-form[aria-busy="true"] .platform-primary-button::before { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: auth-spin .8s linear infinite; content: ""; }
 .drawer-inline-empty { color: var(--color-muted); font-size: 14px; }
 .drawer-state { display: grid; align-content: center; justify-items: start; flex: 1; padding: 28px; }
 .drawer-state h3 { color: var(--color-ink); font-family: var(--font-display); font-size: 28px; font-weight: 600; }
@@ -1710,13 +1714,11 @@
 .platform-secondary-button:hover { border-color: #9bb5df; background: #f8fbff; }
 .platform-primary-button:disabled,
 .platform-secondary-button:disabled,
-.platform-row-action:disabled { cursor: wait; opacity: .55; transform: none; }
+.platform-row-action:disabled { cursor: not-allowed; opacity: .55; transform: none; }
 .platform-inline-form[aria-busy="true"] .platform-primary-button,
 .platform-form-section.is-mutating .platform-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .platform-inline-form[aria-busy="true"] .platform-primary-button::before,
 .platform-form-section.is-mutating .platform-primary-button::before { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: auth-spin .8s linear infinite; content: ""; }
-.platform-modal-actions .platform-primary-button:disabled { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.platform-modal-actions .platform-primary-button:disabled::before { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: auth-spin .8s linear infinite; content: ""; }
 .platform-inline-form { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 18px; padding: 15px; border: 1px solid #e7ebf1; border-radius: 14px; background: #fafbfd; }
 .platform-field { display: grid; flex: 1; gap: 7px; }
 .platform-field label { color: #35435b; font-size: 12px; font-weight: 750; }

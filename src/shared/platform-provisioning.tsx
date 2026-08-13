@@ -7,7 +7,6 @@ import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { AppSelect } from "@/shared/app-select";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { useFocusTrap } from "@/shared/focus-trap";
-import { useRouter } from "@/i18n/navigation";
 import { PermissionGate } from "@/shared/permission-guard";
 import {
   STATUS_META,
@@ -40,7 +39,6 @@ const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
 ];
 
 export function PlatformProvisioning() {
-  const router = useRouter();
   const client = useQueryClient();
   const canManagePlatform = useSessionStore((state) => state.permissions.includes("platform.tenants.manage"));
   const [name, setName] = useState("");
@@ -137,9 +135,16 @@ export function PlatformProvisioning() {
       const created = result.data?.tenant;
       setName("");
       setCreateTenantOpen(false);
+      setPage(1);
+      setSearchInput("");
+      setSelectMode(false);
+      setSelectedTenantIds([]);
+      setSelectAllMatching(false);
+      if (created?.status && STATUS_FILTERS.some((filter) => filter.value === created.status)) {
+        setStatusFilter(created.status);
+      }
       void client.invalidateQueries({ queryKey: ["platform-tenants"] });
-      if (created) router.push(`/settings/platform/tenants/${created.tenant_id}`);
-      else setNotice("Workspace created.");
+      setNotice(created ? `Workspace created. Open ${created.name} when you're ready.` : "Workspace created.");
     },
   });
 

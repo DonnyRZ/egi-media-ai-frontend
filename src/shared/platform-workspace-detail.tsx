@@ -130,7 +130,12 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
   const ownerMemberships = (memberships.data || []).filter((item) => item.role === "tenant_owner");
   const ownerMembership =
     ownerMemberships.find((item) => item.status === "active") || ownerMemberships.find((item) => item.status === "invited");
-  const ownerStepLabel = ownerMembership?.status === "active" ? "Assigned" : ownerMembership?.status === "invited" ? "Invited" : "After company";
+  const ownerIsActive = ownerMembership?.status === "active";
+
+  useEffect(() => {
+    if (!ownerIsActive || !ownerNextSteps) return;
+    setOwnerNextSteps(null);
+  }, [ownerIsActive, ownerNextSteps]);
 
   const createCompany = useMutation({
     mutationFn: async () =>
@@ -305,40 +310,6 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
                 <div>
                   <p className="platform-section-kicker">Provisioning</p>
                   <h2 id="provisioning-heading">Setup progress</h2>
-                </div>
-              </div>
-
-              <div className="platform-stepper" aria-label="Provisioning progress">
-                <div className={`platform-step ${tenant.status === "active" ? "is-complete" : tenant.status === "pending" ? "is-current" : "is-paused"}`}>
-                  <span className="platform-step-number">1</span>
-                  <span className="platform-step-copy">
-                    <strong>Workspace</strong>
-                    <small>{STATUS_META[tenant.status].label}</small>
-                  </span>
-                </div>
-                <div className={`platform-step ${companies.data?.length ? "is-complete" : selectedCanProvision ? "is-current" : "is-paused"}`}>
-                  <span className="platform-step-number">2</span>
-                  <span className="platform-step-copy">
-                    <strong>Company</strong>
-                    <small>{companies.data?.length ? "Ready" : selectedCanProvision ? "Next" : "Paused"}</small>
-                  </span>
-                </div>
-                <div
-                  className={`platform-step ${
-                    ownerMembership || ownerNextSteps
-                      ? "is-complete"
-                      : selectedCanProvision && companies.data?.length
-                        ? "is-current"
-                        : !selectedCanProvision
-                          ? "is-paused"
-                          : ""
-                  }`}
-                >
-                  <span className="platform-step-number">3</span>
-                  <span className="platform-step-copy">
-                    <strong>Owner</strong>
-                    <small>{ownerNextSteps ? "Invited" : !selectedCanProvision && !ownerMembership ? "Paused" : ownerStepLabel}</small>
-                  </span>
                 </div>
               </div>
 
@@ -552,7 +523,7 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
               </div>
             </section>
 
-            {ownerNextSteps && (
+            {ownerNextSteps && !ownerIsActive && (
               <section className="platform-success" data-testid="provisioning-owner-next-steps" role="status">
                 <strong>Tenant owner assigned</strong>
                 <span>

@@ -47,7 +47,7 @@ export function StandardState({ kind, title, message, onRetry, retryLabel = "Try
       setRetrying(false);
     }
   }
-  if (kind === "loading") return <div className="standard-state standard-state-loading" aria-busy="true" aria-live="polite"><div className="loading-brand"><div className="brand-mark">E</div><div><strong>EGI Media</strong><span>AI Intelligence</span></div></div><div className="standard-loader" /><span>{message ?? "Loading workspace..."}</span>{children}</div>;
+  if (kind === "loading") return <div className="standard-state standard-state-loading" aria-busy="true" aria-live="polite"><div className="loading-brand"><div className="brand-mark">E</div><div><strong>EGI Media</strong><span>AI News Insight</span></div></div><div className="standard-loader" /><span>{message ?? "Loading workspace..."}</span>{children}</div>;
   if (kind === "empty") return <div className="standard-state standard-state-empty"><div className="standard-state-mark"><Inbox size={20} strokeWidth={2} aria-hidden="true" /></div><h2>{title ?? "Nothing here yet"}</h2><p>{message ?? "There is no data to show."}</p>{children}</div>;
   const copy = stateCopy(kind);
   const Mark = copy.mark;

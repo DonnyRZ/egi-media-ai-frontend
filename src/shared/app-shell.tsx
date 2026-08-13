@@ -461,7 +461,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside ref={sidebarRef} className={`app-sidebar ${isMobileNavOpen ? "is-open" : ""}`} role={isMobileNavOpen ? "dialog" : "complementary"} aria-label="Primary navigation" aria-modal={isMobileNavOpen || undefined}>
         <div className="sidebar-brand">
           <div className="brand-mark">E</div>
-          <div><strong>EGI Media</strong><span>AI Intelligence</span></div>
+          <div><strong>EGI Media</strong><span>AI News Insight</span></div>
           <button className="shell-icon-button sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><Icon name="close" /></button>
         </div>
         <div className="sidebar-section-label">{isPlatformAdmin ? "Platform" : "Workspace"}</div>

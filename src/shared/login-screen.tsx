@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
-import { ArrowRight, Info } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Info } from "lucide-react";
 import { useRouter } from "@/i18n/navigation";
 import { useSessionStore } from "@/shared/session-store";
 import { axiosClient } from "@/shared/lib/axios-client";
@@ -24,6 +24,7 @@ export function LoginScreen() {
   const setAuthenticatedSession = useSessionStore((state) => state.setAuthenticatedSession);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const leaveLoginRef = useRef(false);
@@ -87,7 +88,7 @@ export function LoginScreen() {
           <div className="brand-mark">E</div>
           <div>
             <strong>EGI Media</strong>
-            <span>AI Intelligence</span>
+            <span>AI News Insight</span>
           </div>
         </div>
         <div className="login-statement">
@@ -114,7 +115,26 @@ export function LoginScreen() {
             <label htmlFor="email">Work email</label>
             <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="you@company.com" aria-invalid={Boolean(error)} />
             <label htmlFor="password">Password</label>
-            <input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Your password" aria-invalid={Boolean(error)} />
+            <div className="password-field">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                placeholder="Your password"
+                aria-invalid={Boolean(error)}
+              />
+              <button
+                type="button"
+                className="password-toggle-button"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((value) => !value)}
+              >
+                {showPassword ? <EyeOff size={18} strokeWidth={2} aria-hidden="true" /> : <Eye size={18} strokeWidth={2} aria-hidden="true" />}
+              </button>
+            </div>
             {error && (
               <span className="login-error" role="alert">
                 {error}

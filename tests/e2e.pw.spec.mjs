@@ -58,8 +58,7 @@ test.describe("supported primary flows", () => {
     await login(page);
     await page.goto("/id/issues");
     await expect(page.getByRole("heading", { name: "News Feed" })).toBeVisible();
-    const egiTab = page.locator('[data-testid="news-feed-tabs"] button[data-channel="egi_media"]');
-    await expect(egiTab).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('[data-testid="news-feed-tabs"]')).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "EGI Media headline" })).toBeVisible();
     await page.getByLabel("Search news feed").fill("headline");
     await expect(page.getByRole("heading", { name: "EGI Media headline" })).toBeVisible();

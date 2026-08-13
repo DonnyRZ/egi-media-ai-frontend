@@ -66,6 +66,7 @@ export interface NewsFeedItemDto {
   thumbnail_url: string | null;
   crawl_source_id: string | null;
   issue_source_id: string | null;
+  source_label?: string | null;
 }
 
 export interface NewsFeedPageDto {

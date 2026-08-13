@@ -957,9 +957,10 @@
   color: var(--color-text); font-size: 15px; line-height: 1.5; overflow-wrap: anywhere;
 }
 .news-feed-card-copy footer {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   margin-top: 4px; color: var(--color-muted); font-size: 13px;
 }
+.news-feed-source { font-weight: 600; color: var(--color-text); }
 .news-feed-open-hint {
   display: inline-flex; align-items: center; gap: 4px; color: var(--color-muted); font-weight: 500;
 }

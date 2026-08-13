@@ -1,10 +1,10 @@
 export const API_ENDPOINTS = {
   authLogin: "/api/v1/auth/login",
-  authSignup: "/api/v1/auth/signup",
   authSwitchContext: "/api/v1/auth/switch-context",
   authSession: "/api/v1/auth/session",
   executiveSummary: "/api/v1/dashboard/executive-summary",
   newsFeed: "/api/v1/news-feed",
+  newsFeedChannels: "/api/v1/news-feed/channels",
   companies: "/api/v1/companies",
   tenantCompanies: "/api/v1/tenant/companies",
   tenantCompany: (companyId: string) => `/api/v1/tenant/companies/${companyId}`,

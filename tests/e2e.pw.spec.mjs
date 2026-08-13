@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { newsFeedChannelsResponse } from "./support/news-feed-channels.mjs";
 
 const contextPayload = {
   context_id: "ctx-1",
@@ -222,7 +223,16 @@ async function mockDashboard(page) {
 
 async function mockNewsFeed(page) {
   await page.route("**/api/v1/news-feed**", async (route) => {
-    const channel = new URL(route.request().url()).searchParams.get("channel") || "egi_media";
+    const url = new URL(route.request().url());
+    if (url.pathname.includes("/news-feed/channels")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(newsFeedChannelsResponse()),
+      });
+      return;
+    }
+    const channel = url.searchParams.get("channel") || "egi_media";
     if (channel === "viral") {
       await route.fulfill({
         status: 200,

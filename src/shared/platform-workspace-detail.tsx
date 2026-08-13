@@ -25,7 +25,10 @@ import {
   type Tenant,
   type TenantStatus,
 } from "@/shared/platform-tenant-shared";
+import { CredentialPasswordFields } from "@/shared/credential-password-fields";
 import { StatusBadge } from "@/shared/platform-status-badge";
+import { defaultAllowedNewsChannelIds, PlatformMediaPicker } from "@/shared/platform-media-picker";
+import { VISIBLE_NEWS_FEED_CHANNELS, type NewsFeedChannelId } from "@/shared/news-feed-channels";
 import { useSessionStore } from "@/shared/session-store";
 import { SoftNavLink } from "@/shared/soft-nav";
 import { BusyLabel, CollectionLoading } from "@/shared/ux-state";
@@ -68,11 +71,16 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerCompanyId, setOwnerCompanyId] = useState("");
   const [ownerFullName, setOwnerFullName] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [ownerConfirmPassword, setOwnerConfirmPassword] = useState("");
+  const [ownerPasswordError, setOwnerPasswordError] = useState("");
   const [notice, setNotice] = useState("");
   const [ownerNextSteps, setOwnerNextSteps] = useState<OwnerNextSteps | null>(() => readPersistedNextSteps(tenantId));
   const [lifecycleAction, setLifecycleAction] = useState<LifecycleAction | null>(null);
   const [lifecycleReason, setLifecycleReason] = useState("");
   const [lifecycleError, setLifecycleError] = useState("");
+  const [editMediaOpen, setEditMediaOpen] = useState(false);
+  const [draftMediaIds, setDraftMediaIds] = useState<NewsFeedChannelId[]>([]);
   const lifecycleModalRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -128,14 +136,6 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
 
   const selectedCanProvision = Boolean(tenant && (tenant.status === "active" || tenant.status === "pending"));
   const ownerMemberships = (memberships.data || []).filter((item) => item.role === "tenant_owner");
-  const ownerMembership =
-    ownerMemberships.find((item) => item.status === "active") || ownerMemberships.find((item) => item.status === "invited");
-  const ownerIsActive = ownerMembership?.status === "active";
-
-  useEffect(() => {
-    if (!ownerIsActive || !ownerNextSteps) return;
-    setOwnerNextSteps(null);
-  }, [ownerIsActive, ownerNextSteps]);
 
   const createCompany = useMutation({
     mutationFn: async () =>
@@ -154,7 +154,12 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
       (
         await axiosClient.post(
           API_ENDPOINTS.platformTenantOwner(tenantId),
-          { email: ownerEmail.trim(), company_id: ownerCompanyId.trim(), ...(ownerFullName.trim() ? { full_name: ownerFullName.trim() } : {}) },
+          {
+            email: ownerEmail.trim(),
+            company_id: ownerCompanyId.trim(),
+            full_name: ownerFullName.trim(),
+            password: ownerPassword,
+          },
           { headers: { "Idempotency-Key": idempotencyKey() } },
         )
       ).data,
@@ -165,6 +170,9 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
       setOwnerEmail("");
       setOwnerCompanyId("");
       setOwnerFullName("");
+      setOwnerPassword("");
+      setOwnerConfirmPassword("");
+      setOwnerPasswordError("");
       setAddOwnerOpen(false);
       setNotice("");
       void client.invalidateQueries({ queryKey: membershipsKey(tenantId) });
@@ -192,7 +200,36 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
     },
   });
 
-  const canAssign = Boolean(selectedCanProvision && ownerEmail.trim() && ownerCompanyId.trim() && !assignOwner.isPending);
+  const selectedMediaIds = tenant?.allowed_news_channel_ids?.length ? tenant.allowed_news_channel_ids : defaultAllowedNewsChannelIds();
+
+  const saveMedia = useMutation({
+    mutationFn: async (allowedNewsChannelIds: NewsFeedChannelId[]) => {
+      const response = await axiosClient.patch<TenantResponse>(
+        API_ENDPOINTS.platformTenant(tenantId),
+        { allowed_news_channel_ids: allowedNewsChannelIds },
+        { headers: { "Idempotency-Key": idempotencyKey() } },
+      );
+      return response.data.data?.tenant ? normalizeTenant(response.data.data.tenant) : null;
+    },
+    onSuccess: (updatedTenant) => {
+      if (updatedTenant) {
+        client.setQueryData(["platform-tenant", tenantId], updatedTenant);
+        void client.invalidateQueries({ queryKey: ["platform-tenants"] });
+      }
+      setEditMediaOpen(false);
+      setNotice("News sources updated.");
+    },
+  });
+
+  const canAssign = Boolean(
+    selectedCanProvision &&
+    ownerEmail.trim() &&
+    ownerFullName.trim() &&
+    ownerCompanyId.trim() &&
+    ownerPassword.length >= 8 &&
+    ownerPassword === ownerConfirmPassword &&
+    !assignOwner.isPending,
+  );
 
   function beginLifecycleAction(action: LifecycleAction) {
     lifecycleMutation.reset();
@@ -406,13 +443,75 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
                 )}
               </div>
 
+              <div className={`platform-form-section ${saveMedia.isPending ? "is-mutating" : ""}`} aria-busy={saveMedia.isPending}>
+                <div className="platform-form-section-heading">
+                  <div>
+                    <h3>News sources</h3>
+                    <p>This workspace can only read and pull the outlets you select.</p>
+                  </div>
+                  {selectedCanProvision && (
+                    <button
+                      type="button"
+                      className="platform-secondary-button"
+                      onClick={() => {
+                        if (editMediaOpen) {
+                          setEditMediaOpen(false);
+                          return;
+                        }
+                        setDraftMediaIds(selectedMediaIds);
+                        setEditMediaOpen(true);
+                      }}
+                    >
+                      {editMediaOpen ? "Cancel" : "Edit sources"}
+                    </button>
+                  )}
+                </div>
+                {!selectedCanProvision && (
+                  <div className="platform-readonly-panel">
+                    <strong>News source changes are paused</strong>
+                    <span>The current workspace status is {STATUS_META[tenant.status].label.toLowerCase()}. Existing sources remain available for audit.</span>
+                  </div>
+                )}
+                <div className="platform-company-list-header">
+                  <span>Assigned sources</span>
+                  <span className="platform-company-count">{selectedMediaIds.length}</span>
+                </div>
+                <div className="platform-media-chips">
+                  {selectedMediaIds.map((id) => (
+                    <span className="platform-media-chip" key={id}>
+                      {VISIBLE_NEWS_FEED_CHANNELS.find((channel) => channel.id === id)?.label || id}
+                    </span>
+                  ))}
+                </div>
+                {editMediaOpen && selectedCanProvision && (
+                  <form
+                    className="platform-inline-form"
+                    aria-busy={saveMedia.isPending}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (draftMediaIds.length) saveMedia.mutate(draftMediaIds);
+                    }}
+                  >
+                    <PlatformMediaPicker value={draftMediaIds} onChange={setDraftMediaIds} disabled={saveMedia.isPending} />
+                    <button type="submit" className="platform-primary-button" data-loading={saveMedia.isPending} disabled={!draftMediaIds.length || saveMedia.isPending}>
+                      {saveMedia.isPending ? "Saving…" : "Save sources"}
+                    </button>
+                  </form>
+                )}
+                {saveMedia.isError && (
+                  <p className="platform-form-error" role="alert">
+                    News sources could not be updated. {errorMessage(saveMedia.error, "Check the selection and try again.")}
+                  </p>
+                )}
+              </div>
+
               <div className={`platform-form-section ${assignOwner.isPending ? "is-mutating" : ""}`} aria-busy={memberships.isLoading || assignOwner.isPending}>
                 {companies.data && companies.data.length > 0 ? (
                   <>
                     <div className="platform-form-section-heading">
                       <div>
                         <h3>Tenant owner</h3>
-                        <p>Invite the person who will manage this customer workspace.</p>
+                        <p>Create the tenant owner account. They can sign in immediately with the password you set.</p>
                       </div>
                       {selectedCanProvision && ownerMemberships.length > 0 && (
                         <button type="button" className="platform-secondary-button" onClick={() => setAddOwnerOpen((value) => !value)}>
@@ -466,9 +565,30 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
                         aria-busy={assignOwner.isPending}
                         onSubmit={(event) => {
                           event.preventDefault();
+                          if (ownerPassword.length < 8) {
+                            setOwnerPasswordError("Password must be at least 8 characters.");
+                            return;
+                          }
+                          if (ownerPassword !== ownerConfirmPassword) {
+                            setOwnerPasswordError("Passwords do not match.");
+                            return;
+                          }
+                          setOwnerPasswordError("");
                           if (canAssign) assignOwner.mutate();
                         }}
                       >
+                        <div className="platform-field">
+                          <label htmlFor="owner-name">Full name</label>
+                          <input
+                            id="owner-name"
+                            aria-label="Owner full name"
+                            value={ownerFullName}
+                            onChange={(event) => setOwnerFullName(event.target.value)}
+                            placeholder="Full name"
+                            autoFocus={addOwnerOpen}
+                            required
+                          />
+                        </div>
                         <div className="platform-field">
                           <label htmlFor="owner-email">Owner email</label>
                           <input
@@ -478,19 +598,7 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
                             value={ownerEmail}
                             onChange={(event) => setOwnerEmail(event.target.value)}
                             placeholder="owner@company.com"
-                            autoFocus={addOwnerOpen}
-                          />
-                        </div>
-                        <div className="platform-field">
-                          <label htmlFor="owner-name">
-                            Full name <span>(optional)</span>
-                          </label>
-                          <input
-                            id="owner-name"
-                            aria-label="Owner full name"
-                            value={ownerFullName}
-                            onChange={(event) => setOwnerFullName(event.target.value)}
-                            placeholder="Full name"
+                            required
                           />
                         </div>
                         <div className="platform-field">
@@ -503,14 +611,31 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
                             onChange={setOwnerCompanyId}
                           />
                         </div>
+                        <div className="platform-owner-credentials">
+                          <CredentialPasswordFields
+                            idPrefix="owner"
+                            password={ownerPassword}
+                            confirmPassword={ownerConfirmPassword}
+                            onPasswordChange={(value) => {
+                              setOwnerPassword(value);
+                              setOwnerPasswordError("");
+                            }}
+                            onConfirmChange={(value) => {
+                              setOwnerConfirmPassword(value);
+                              setOwnerPasswordError("");
+                            }}
+                            passwordError={ownerPasswordError}
+                            helper="They can sign in immediately. Share this password — it is not stored in this screen."
+                          />
+                        </div>
                         <button type="submit" className="platform-primary-button" data-loading={assignOwner.isPending} disabled={!canAssign}>
-                          {assignOwner.isPending ? "Assigning…" : "Assign owner"}
+                          {assignOwner.isPending ? "Creating…" : "Create owner"}
                         </button>
                       </form>
                     )}
                     {assignOwner.isError && (
                       <p className="platform-form-error" role="alert">
-                        Owner could not be assigned. {errorMessage(assignOwner.error, "Check the email and selected company.")}
+                        Owner could not be created. {errorMessage(assignOwner.error, "Check the name, email, password, and selected company.")}
                       </p>
                     )}
                   </>
@@ -523,13 +648,13 @@ export function PlatformWorkspaceDetail({ tenantId }: { tenantId: string }) {
               </div>
             </section>
 
-            {ownerNextSteps && !ownerIsActive && (
+            {ownerNextSteps && (
               <section className="platform-success" data-testid="provisioning-owner-next-steps" role="status">
-                <strong>Tenant owner assigned</strong>
+                <strong>Owner account is ready</strong>
                 <span>
-                  {ownerNextSteps.email} can access {ownerNextSteps.companyName} after signing up with this exact email.
+                  {ownerNextSteps.email} can sign in now to {ownerNextSteps.companyName}. Share the password you set — it is not stored in this screen.
                 </span>
-                <SoftNavLink href="/signup">Open signup page</SoftNavLink>
+                <SoftNavLink href="/login">Open sign in</SoftNavLink>
               </section>
             )}
 

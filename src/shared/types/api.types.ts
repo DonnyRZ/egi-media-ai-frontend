@@ -26,7 +26,7 @@ export interface CompanyOptionDto { company_id: string; tenant_id?: string; name
 export interface CompanyOptionListDto { items: CompanyOptionDto[]; }
 export interface AuthSessionDto { actor: { id: string; email: string | null; type: "human" | "service" | "ai_worker"; role: string | null; membership_id: string | null }; tenant_id: string | null; company_id: string | null; role: string | null; permissions: string[]; authorized_companies: Array<CompanyOptionDto & { role?: string }> | string[]; }
 export interface LoginDto { access_token: string; token_type: "Bearer"; actor: { id: string; email: string; role: string | null; type: "human" | "service" | "ai_worker" }; tenant_id?: string | null; company_id?: string | null; permissions?: string[]; authorized_companies?: Array<CompanyOptionDto & { tenant_id?: string; role?: string }>; }
-export interface MembershipDto { membership_id: string; user_id: string; tenant_id: string; company_id: string | null; role: string; status: string; version: number; permissions: string[]; }
+export interface MembershipDto { membership_id: string; user_id: string; tenant_id: string; company_id: string | null; role: string; status: string; version: number; permissions: string[]; email?: string | null; full_name?: string | null; }
 export interface MembershipListDto { items: MembershipDto[]; meta: PaginationMeta; }
 
 export interface PaginationMeta {
@@ -77,6 +77,17 @@ export interface NewsFeedPageDto {
   next_cursor: string | null;
   availability?: "coming_soon" | string;
   message?: string | null;
+}
+
+export interface NewsFeedChannelDto {
+  id: string;
+  label: string;
+  layout: NewsFeedLayoutDto;
+  provider: NewsFeedProviderDto;
+}
+
+export interface NewsFeedChannelListDto {
+  items: NewsFeedChannelDto[];
 }
 
 export interface ManagementIdentityDto {

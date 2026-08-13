@@ -97,7 +97,7 @@ test.describe("tenant owner/admin workspace UX gate", () => {
       if (route.request().method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: members, meta: { total: members.length } }, meta: { request_id: "tenant-ux" } }) });
       const body = route.request().postDataJSON();
       requests.push({ method: route.request().method(), body, idempotency: route.request().headers()["idempotency-key"] });
-      const created = { membership_id: "membership-new", user_id: `user:${body.email}`, tenant_id: "tenant-a", company_id: body.company_id, role: body.role, status: "invited", version: 1 };
+      const created = { membership_id: "membership-new", user_id: `user:${body.email}`, tenant_id: "tenant-a", company_id: body.company_id, role: body.role, status: "active", version: 1, email: body.email, full_name: body.full_name };
       members = [...members, created];
       return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { membership: created, reused: false }, meta: { request_id: "tenant-ux" } }) });
     });
@@ -117,7 +117,7 @@ test.describe("tenant owner/admin workspace UX gate", () => {
     });
 
     await page.goto("/id/settings/access");
-    await expect(page.getByRole("banner").getByRole("heading", { name: "Access", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create member" })).toBeVisible();
     await expect(page.getByText("analyst@example.com")).toBeVisible();
     const roleSelect = page.getByRole("combobox", { name: "Role" });
     await roleSelect.click();
@@ -127,15 +127,18 @@ test.describe("tenant owner/admin workspace UX gate", () => {
     await page.keyboard.press("Escape");
     await expect(page).toHaveScreenshot("tenant-access-initial.png", { fullPage: true });
 
+    await page.getByLabel("Full name").fill("New User");
     await page.getByLabel("Work email").fill("newuser@example.com");
+    await page.getByLabel("Password", { exact: true }).fill("MemberPass123!");
+    await page.getByLabel("Confirm password").fill("MemberPass123!");
     await roleSelect.click();
     await page.getByRole("option", { name: "Executive", exact: true }).click();
     const companyAccessSelect = page.getByRole("combobox", { name: "Company access" });
     await companyAccessSelect.click();
     await page.getByRole("option", { name: "Company B", exact: true }).click();
-    await page.getByRole("button", { name: "Invite member" }).click();
-    await expect(page.getByRole("status")).toContainText("Invitation created");
-    expect(requests[0].body).toMatchObject({ email: "newuser@example.com", role: "executive", company_id: "company-b" });
+    await page.getByRole("button", { name: "Create member" }).click();
+    await expect(page.getByRole("status")).toContainText("Member created");
+    expect(requests[0].body).toMatchObject({ email: "newuser@example.com", full_name: "New User", password: "MemberPass123!", role: "executive", company_id: "company-b" });
     expect(requests[0].idempotency.length).toBeGreaterThanOrEqual(16);
     await expect(page.getByText("newuser@example.com")).toBeVisible();
 

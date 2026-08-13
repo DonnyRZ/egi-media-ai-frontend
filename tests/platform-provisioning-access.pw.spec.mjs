@@ -8,13 +8,15 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     const companiesByTenant = { "tenant-egiresources": [{ company_id: "company-agat", name: "AGAT Laser Beam", status: "active" }] };
     const membershipsByTenant = { "tenant-egiresources": [] };
 
+    let createdPayload = null;
     await page.route((url) => url.pathname === "/api/v1/platform/tenants", async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: tenants, meta: { page: 1, limit: 100, total: tenants.length } } }) });
         return;
       }
       const body = route.request().postDataJSON();
-      const tenant = { tenant_id: "tenant-northstar", name: body.name, status: "pending" };
+      createdPayload = body;
+      const tenant = { tenant_id: "tenant-northstar", name: body.name, status: "pending", allowed_news_channel_ids: body.allowed_news_channel_ids };
       tenants = [tenant, ...tenants];
       companiesByTenant[tenant.tenant_id] = [];
       membershipsByTenant[tenant.tenant_id] = [];
@@ -39,7 +41,7 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
         membership_id: `membership-owner-${tenantId}`,
         user_id: `user:${body.email}`,
         role: "tenant_owner",
-        status: "invited",
+        status: "active",
         company_id: body.company_id || null,
         email: body.email,
         full_name: body.full_name || null,
@@ -51,6 +53,18 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
       const tenantId = route.request().url().match(/tenants\/([^/]+)\/memberships/)[1];
       const items = membershipsByTenant[tenantId] || [];
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items, meta: { page: 1, limit: 100, total: items.length } } }) });
+    });
+    await page.route((url) => /\/api\/v1\/platform\/tenants\/[^/]+$/.test(url.pathname), async (route) => {
+      if (route.request().method() !== "PATCH") return route.fallback();
+      const tenantId = new URL(route.request().url()).pathname.split("/").pop();
+      const body = route.request().postDataJSON();
+      tenants = tenants.map((item) => (
+        item.tenant_id === tenantId
+          ? { ...item, allowed_news_channel_ids: body.allowed_news_channel_ids ?? item.allowed_news_channel_ids, status: body.status ?? item.status }
+          : item
+      ));
+      const tenant = tenants.find((item) => item.tenant_id === tenantId);
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { tenant }, meta: { request_id: "platform-provisioning" } }) });
     });
     await loginAsPlatformSuperadmin(page);
 
@@ -75,14 +89,33 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     await page.getByRole("button", { name: "New workspace" }).click();
     await expect(page.getByLabel("Tenant name")).toBeVisible();
     await expect(page.getByRole("button", { name: "Create workspace" })).toBeDisabled();
+    await expect(page.getByText("18 of 18 selected")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Select all" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Clear" })).toBeEnabled();
     await expect(page).toHaveScreenshot("platform-provisioning-new-workspace-empty.png", { fullPage: true });
     await page.getByLabel("Tenant name").fill("Northstar Workspace");
+    await page.getByRole("button", { name: "Clear" }).click();
+    await expect(page.getByText("0 of 18 selected")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create workspace" })).toBeDisabled();
+    await page.getByRole("button", { name: "Select all" }).click();
+    await expect(page.getByRole("button", { name: "Create workspace" })).toBeEnabled();
     await page.getByRole("button", { name: "Create workspace" }).click();
     await expect(page).toHaveURL(/\/id\/settings\/platform$/, { timeout: 15_000 });
     await expect(page.getByRole("status").filter({ hasText: "Workspace created. Open Northstar Workspace when you're ready." })).toBeVisible();
+    expect(createdPayload?.allowed_news_channel_ids).toHaveLength(18);
+    expect(createdPayload?.allowed_news_channel_ids).toContain("egi_media");
+    expect(createdPayload?.allowed_news_channel_ids).not.toContain("viral");
     await expect(page.locator(".platform-tenant-row").filter({ hasText: /Northstar Workspace/i }).first()).toBeVisible();
     await page.locator(".platform-tenant-row").filter({ hasText: /Northstar Workspace/i }).first().getByRole("link", { name: "Open workspace" }).click();
     await expect(page.getByRole("heading", { name: "Northstar Workspace" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "News sources" })).toBeVisible();
+    await expect(page.locator(".platform-media-chip")).toHaveCount(18);
+    await page.getByRole("button", { name: "Edit sources" }).click();
+    await expect(page.getByText("18 of 18 selected")).toBeVisible();
+    await page.getByRole("button", { name: "Tribunnews" }).click();
+    await page.getByRole("button", { name: "Save sources" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "News sources updated." })).toBeVisible();
+    await expect(page.locator(".platform-media-chip")).toHaveCount(17);
 
     // Loop B: EGI Resources tenant + AGAT company
     await page.getByRole("link", { name: "← Workspace registry" }).click();
@@ -92,7 +125,7 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     await expect(page.getByText(/AGAT Laser Beam/i).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("alert").filter({ hasText: /could not load companies|companies are unavailable/i })).toHaveCount(0);
     await expect(page.getByLabel("Owner email")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Assign owner" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Create owner" })).toBeDisabled();
     await page.mouse.move(0, 0);
     await expect(page).toHaveScreenshot("platform-provisioning-selected-workspace.png", { fullPage: true });
 
@@ -103,12 +136,14 @@ test.describe("Loop A/B platform_superadmin provisioning", () => {
     await expect(page.locator(".platform-company-list").getByText("Northstar Analytics", { exact: true })).toBeVisible();
     await page.getByLabel("Owner email").fill("owner@northstar.example");
     await page.getByLabel("Owner full name").fill("Northstar Owner");
+    await page.getByLabel("Password", { exact: true }).fill("OwnerPass123!");
+    await page.getByLabel("Confirm password").fill("OwnerPass123!");
     await page.getByRole("combobox", { name: "Owner company" }).click();
     await page.getByRole("option", { name: "Northstar Analytics", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Assign owner" })).toBeEnabled();
-    await page.getByRole("button", { name: "Assign owner" }).click();
-    await expect(page.getByTestId("provisioning-owner-next-steps")).toContainText("Tenant owner assigned");
-    await expect(page.getByRole("link", { name: "Open signup page" })).toHaveAttribute("href", "/id/signup");
+    await expect(page.getByRole("button", { name: "Create owner" })).toBeEnabled();
+    await page.getByRole("button", { name: "Create owner" }).click();
+    await expect(page.getByTestId("provisioning-owner-next-steps")).toContainText("Owner account is ready");
+    await expect(page.getByRole("link", { name: "Open sign in" })).toHaveAttribute("href", "/id/login");
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(page).toHaveScreenshot("platform-provisioning-owner-assigned.png", { fullPage: true });
   });

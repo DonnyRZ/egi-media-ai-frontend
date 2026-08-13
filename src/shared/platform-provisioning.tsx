@@ -8,6 +8,7 @@ import { AppSelect } from "@/shared/app-select";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { useFocusTrap } from "@/shared/focus-trap";
 import { PermissionGate } from "@/shared/permission-guard";
+import { defaultAllowedNewsChannelIds, PlatformMediaPicker } from "@/shared/platform-media-picker";
 import {
   STATUS_META,
   errorMessage,
@@ -42,6 +43,7 @@ export function PlatformProvisioning() {
   const client = useQueryClient();
   const canManagePlatform = useSessionStore((state) => state.permissions.includes("platform.tenants.manage"));
   const [name, setName] = useState("");
+  const [selectedMediaIds, setSelectedMediaIds] = useState(defaultAllowedNewsChannelIds);
   const [createTenantOpen, setCreateTenantOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [searchInput, setSearchInput] = useState("");
@@ -130,10 +132,11 @@ export function PlatformProvisioning() {
   });
 
   const createTenant = useMutation({
-    mutationFn: async () => (await axiosClient.post<TenantResponse>(API_ENDPOINTS.platformTenants, { name: name.trim() }, { headers: { "Idempotency-Key": idempotencyKey() } })).data,
+    mutationFn: async () => (await axiosClient.post<TenantResponse>(API_ENDPOINTS.platformTenants, { name: name.trim(), allowed_news_channel_ids: selectedMediaIds }, { headers: { "Idempotency-Key": idempotencyKey() } })).data,
     onSuccess: (result) => {
       const created = result.data?.tenant;
       setName("");
+      setSelectedMediaIds(defaultAllowedNewsChannelIds());
       setCreateTenantOpen(false);
       setPage(1);
       setSearchInput("");
@@ -237,7 +240,7 @@ export function PlatformProvisioning() {
                   {selectMode ? "Done selecting" : "Select workspaces"}
                 </button>
               )}
-              <button type="button" className="platform-primary-button" onClick={() => setCreateTenantOpen(true)}>
+              <button type="button" className="platform-primary-button" onClick={() => { setSelectedMediaIds(defaultAllowedNewsChannelIds()); setCreateTenantOpen(true); }}>
                 New workspace
               </button>
             </div>
@@ -373,7 +376,7 @@ export function PlatformProvisioning() {
 
         {createTenantOpen && (
           <div className="platform-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCreateDialog(); }}>
-            <section ref={createModalRef} className="platform-modal" role="dialog" aria-modal="true" aria-labelledby="create-tenant-title" aria-describedby="create-tenant-description">
+            <section ref={createModalRef} className="platform-modal platform-modal-wide" role="dialog" aria-modal="true" aria-labelledby="create-tenant-title" aria-describedby="create-tenant-description">
               <div className="platform-modal-heading">
                 <div className="platform-modal-icon" aria-hidden="true">+</div>
                 <div>
@@ -386,19 +389,24 @@ export function PlatformProvisioning() {
                 aria-busy={createTenant.isPending}
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (name.trim()) createTenant.mutate();
+                  if (name.trim() && selectedMediaIds.length) createTenant.mutate();
                 }}
               >
                 <label className="platform-modal-field" htmlFor="tenant-name">
                   <span>Workspace name</span>
                   <input id="tenant-name" aria-label="Tenant name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Customer legal or workspace name" autoFocus />
                 </label>
+                <div className="platform-modal-field platform-media-field">
+                  <span>News sources</span>
+                  <p>Choose which outlets this workspace can read and pull. You can change this later.</p>
+                  <PlatformMediaPicker value={selectedMediaIds} onChange={setSelectedMediaIds} disabled={createTenant.isPending} />
+                </div>
                 {createTenant.isError && (
                   <p className="platform-form-error" role="alert">Workspace could not be created. {errorMessage(createTenant.error, "Check the name and try again.")}</p>
                 )}
                 <div className="platform-modal-actions">
                   <button type="button" className="platform-secondary-button" onClick={closeCreateDialog} disabled={createTenant.isPending}>Cancel</button>
-                  <button type="submit" className="platform-primary-button" aria-busy={createTenant.isPending} data-loading={createTenant.isPending} disabled={!name.trim() || createTenant.isPending}>
+                  <button type="submit" className="platform-primary-button" aria-busy={createTenant.isPending} data-loading={createTenant.isPending} disabled={!name.trim() || selectedMediaIds.length === 0 || createTenant.isPending}>
                     {createTenant.isPending ? <BusyLabel>Creating…</BusyLabel> : "Create workspace"}
                   </button>
                 </div>

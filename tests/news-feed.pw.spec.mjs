@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { newsFeedChannelsResponse } from "./support/news-feed-channels.mjs";
 
 const feedItem = (overrides = {}) => ({
   id: "cms:article-1",
@@ -70,6 +71,14 @@ async function mockAuthAndFeed(page, onFeedRequest, unavailableChannel = null, p
   );
   await page.route("**/api/v1/news-feed**", async (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.includes("/news-feed/channels")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(newsFeedChannelsResponse()),
+      });
+      return;
+    }
     const channel = url.searchParams.get("channel") || "egi_media";
     onFeedRequest?.(channel, url);
     if (channel === unavailableChannel) {

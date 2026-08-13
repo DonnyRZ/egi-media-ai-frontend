@@ -130,14 +130,14 @@ function copyForStage(stage: ProvisioningStage, missing: ScopePrerequisite): Sco
     case "no-owner":
       return {
         isLoading: false,
-        body: `${stage.companyName} (${stage.tenantName}) has no tenant owner yet. Assign an owner email in Provisioning — the owner account is what can open this surface.`,
+        body: `${stage.companyName} (${stage.tenantName}) has no tenant owner yet. Create an owner account in Provisioning with a name, email, and password — that account can open this surface.`,
         action: { label: "Open Provisioning", href: "/settings/platform" },
       };
     case "owner-invited":
       return {
         isLoading: false,
-        body: `Nothing left to do in Provisioning: ${stage.companyName} (${stage.tenantName}) already has an owner invite for ${stage.email}, still waiting for signup. Create that account with the exact same email, sign in with it, then pick the company in Company scope.`,
-        action: { label: "Open signup page", href: "/signup" },
+        body: `${stage.companyName} (${stage.tenantName}) still has a pending owner invite for ${stage.email}. Recreate that owner in Provisioning with a password so they can sign in, then pick the company in Company scope.`,
+        action: { label: "Open Provisioning", href: "/settings/platform" },
       };
     case "owner-active":
       return {

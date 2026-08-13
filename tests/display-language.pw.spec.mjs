@@ -65,15 +65,9 @@ test.describe("Display language settings", () => {
       method: "POST",
       token: platformToken,
       idempotencyKey: `lang-invite-${stamp}`,
-      body: { email: ownerEmail, full_name: "Lang Owner", company_id: companyId },
+      body: { email: ownerEmail, full_name: "Lang Owner", password: ownerPassword, company_id: companyId },
     });
     expect([200, 201], `invite failed: ${JSON.stringify(invite.json)}`).toContain(invite.status);
-
-    const signup = await apiJson("/api/v1/auth/signup", {
-      method: "POST",
-      body: { email: ownerEmail, password: ownerPassword, full_name: "Lang Owner" },
-    });
-    expect([200, 201], JSON.stringify(signup.json)).toContain(signup.status);
 
     const ownerLogin = await apiJson("/api/v1/auth/login", {
       method: "POST",

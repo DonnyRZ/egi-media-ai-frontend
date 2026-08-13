@@ -6,7 +6,7 @@ import { usePathname } from "@/i18n/navigation";
 import { AuthGate } from "@/shared/auth-gate";
 import { AppShell } from "@/shared/app-shell";
 
-const PUBLIC_PATHS = new Set(["/login", "/signup"]);
+const PUBLIC_PATHS = new Set(["/login"]);
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();

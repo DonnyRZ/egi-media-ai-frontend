@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { newsFeedChannelsResponse } from "./support/news-feed-channels.mjs";
 
 const OWNER_PERMISSIONS = [
   "dashboard.read",
@@ -139,6 +140,13 @@ async function mockSessionAndCompanies(page, permissions, role = "tenant_owner")
         data: { items: [{ company_id: "company-a", name: "Company A", tenant_id: "tenant-a" }] },
         meta: { request_id: "ni" },
       }),
+    }),
+  );
+  await page.route("**/api/v1/news-feed/channels**", async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(newsFeedChannelsResponse()),
     }),
   );
 }

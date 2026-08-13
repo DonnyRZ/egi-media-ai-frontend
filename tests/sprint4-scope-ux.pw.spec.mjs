@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { loginAsPlatformSuperadmin } from "./support/scope-test-session.mjs";
 
 test.describe("platform owner-assignment handoff", () => {
-  test("assign owner produces an explicit signup and scope next step", async ({ page }) => {
+  test("create owner produces a ready-to-sign-in next step", async ({ page }) => {
     await page.route((url) => url.pathname === "/api/v1/platform/tenants", async (route) => route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -15,7 +15,7 @@ test.describe("platform owner-assignment handoff", () => {
     }));
     await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-4/owner", async (route) => {
       if (route.request().method() !== "POST") return route.fallback();
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { membership: { role: "tenant_owner", status: "invited" } }, meta: { request_id: "scope-test" } }) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { membership: { role: "tenant_owner", status: "active" } }, meta: { request_id: "scope-test" } }) });
     });
     await page.route((url) => url.pathname === "/api/v1/platform/tenants/tenant-4/memberships", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: { items: [], meta: { page: 1, limit: 100, total: 0 } } }) }));
 
@@ -28,17 +28,19 @@ test.describe("platform owner-assignment handoff", () => {
     await expect(page.getByLabel("Owner email")).toHaveValue("owner@sprint4.test");
     await page.getByLabel("Owner full name").fill("Sprint4 Owner");
     await expect(page.getByLabel("Owner full name")).toHaveValue("Sprint4 Owner");
+    await page.getByLabel("Password", { exact: true }).fill("OwnerPass123!");
+    await page.getByLabel("Confirm password").fill("OwnerPass123!");
     await page.getByRole("combobox", { name: "Owner company" }).click();
     await page.getByRole("option", { name: "Sprint4 Company", exact: true }).click();
     await expect(page.getByRole("combobox", { name: "Owner company" })).toContainText("Sprint4 Company");
-    await page.getByRole("button", { name: /Assign owner/i }).click();
+    await page.getByRole("button", { name: /Create owner/i }).click();
 
     const next = page.getByTestId("provisioning-owner-next-steps");
     await expect(next).toBeVisible();
-    await expect(next).toContainText("Tenant owner assigned");
+    await expect(next).toContainText("Owner account is ready");
     await expect(next).toContainText("owner@sprint4.test");
-    await expect(next).toContainText(/after signing up with this exact email/i);
-    await expect(next.getByRole("link", { name: /Open signup page/i })).toBeVisible();
+    await expect(next).toContainText(/can sign in now/i);
+    await expect(next.getByRole("link", { name: /Open sign in/i })).toBeVisible();
     await expect(page.getByText("Platform control plane")).toBeVisible();
   });
 });

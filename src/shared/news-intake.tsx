@@ -3,11 +3,12 @@
 import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LoaderCircle, RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Link } from "@/i18n/navigation";
 import { AppSelect } from "@/shared/app-select";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
+import { fetchEntitledNewsChannels } from "@/shared/entitled-news-channels";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { EXTERNAL_INTAKE_MEDIA } from "@/shared/news-feed-channels";
 import { PermissionGate } from "@/shared/permission-guard";
@@ -104,6 +105,36 @@ function NewsIntakeBody() {
   const [runsOffset, setRunsOffset] = useState(0);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
+  const channelsQuery = useQuery({
+    queryKey: ["news-feed-channels", companyId],
+    queryFn: fetchEntitledNewsChannels,
+    enabled: Boolean(companyId),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const entitledChannels = channelsQuery.data ?? [];
+  const egiEntitled = channelsQuery.isSuccess && entitledChannels.some((channel) => channel.id === "egi_media");
+  const entitledExternal = useMemo(
+    () => entitledChannels.filter((channel) => channel.id !== "egi_media"),
+    [entitledChannels],
+  );
+
+  useEffect(() => {
+    if (channelsQuery.isPending) return;
+    if (pullSource === "egi" && !egiEntitled) {
+      setPullSource(entitledExternal.length ? "external" : "article");
+    } else if (pullSource === "external" && !entitledExternal.length) {
+      setPullSource(egiEntitled ? "egi" : "article");
+    }
+  }, [channelsQuery.isPending, egiEntitled, entitledExternal.length, pullSource]);
+
+  useEffect(() => {
+    if (!entitledExternal.length) return;
+    if (!entitledExternal.some((media) => media.id === externalMediaId)) {
+      setExternalMediaId(entitledExternal[0].id);
+    }
+  }, [entitledExternal, externalMediaId]);
+
   const statusQuery = useQuery({
     queryKey: ["news-intake-status", companyId],
     queryFn: readStatus,
@@ -155,7 +186,7 @@ function NewsIntakeBody() {
   const automatic = statusQuery.data?.automatic_intake;
   const desiredOn = Boolean(automatic?.desired);
   const statusLine = useMemo(() => formatAutomaticStatus(automatic), [automatic]);
-  const pullValid = isPullFormValid({ pullSource, externalMediaId, articleId, limit });
+  const pullValid = isPullFormValid({ pullSource, externalMediaId, articleId, limit, egiEntitled, entitledExternalIds: entitledExternal.map((media) => media.id) });
   const isIntakeReady = (() => {
     const status = statusQuery.data;
     if (!status) return true;
@@ -166,7 +197,7 @@ function NewsIntakeBody() {
   const identityStatus = statusQuery.data?.management_identity?.status ?? null;
   const contextIncomplete = statusQuery.data?.company_context?.complete === false;
   const pullDisabled =
-    !canTrigger || !pullValid || pullMutation.isPending || statusQuery.isPending || statusQuery.isError || !isIntakeReady;
+    !canTrigger || !pullValid || pullMutation.isPending || statusQuery.isPending || statusQuery.isError || !isIntakeReady || channelsQuery.isPending;
   const pullBusy = pullMutation.isPending || statusQuery.isPending;
   const automaticDisabled =
     !canManage || automaticMutation.isPending || statusQuery.isPending || statusQuery.isError || !isIntakeReady;
@@ -177,6 +208,7 @@ function NewsIntakeBody() {
   return (
     <div className="preference-page news-intake-page" data-testid="news-intake-page">
       <header className="news-intake-intro">
+        <h1 className="page-title">News intake</h1>
         <p>
           Bring articles into issues for this company. Automatic intake covers EGI Media on a schedule; manual pulls
           cover one source at a time.
@@ -269,6 +301,7 @@ function NewsIntakeBody() {
             aria-label="Pull source"
             data-testid="news-intake-source-tabs"
           >
+            {egiEntitled && (
             <button
               type="button"
               role="tab"
@@ -282,6 +315,8 @@ function NewsIntakeBody() {
             >
               EGI Media
             </button>
+            )}
+            {entitledExternal.length > 0 && (
             <button
               type="button"
               role="tab"
@@ -295,6 +330,7 @@ function NewsIntakeBody() {
             >
               External media
             </button>
+            )}
             <button
               type="button"
               role="tab"
@@ -317,14 +353,18 @@ function NewsIntakeBody() {
             <AppSelect
               data-testid="news-intake-external-media"
               value={externalMediaId}
-              options={EXTERNAL_INTAKE_MEDIA.map((media) => ({ value: media.id, label: media.label }))}
+              options={entitledExternal.map((media) => ({ value: media.id, label: media.label }))}
                disabled={!canTrigger || pullBusy}
               onChange={(value) => {
                 setExternalMediaId(value);
                 setNotice(null);
               }}
             />
-            <small>Pull from exactly one external media outlet. All 17 outlets are listed; choose one.</small>
+            <small>
+              {entitledExternal.length === 1
+                ? "Pull from the entitled external outlet."
+                : `Pull from exactly one entitled outlet (${entitledExternal.length} available).`}
+            </small>
           </label>
         )}
 
@@ -545,14 +585,19 @@ function isPullFormValid({
   externalMediaId,
   articleId,
   limit,
+  egiEntitled,
+  entitledExternalIds,
 }: {
   pullSource: PullSourceKind;
   externalMediaId: string;
   articleId: string;
   limit: number;
+  egiEntitled: boolean;
+  entitledExternalIds: readonly string[];
 }) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) return false;
-  if (pullSource === "external" && !EXTERNAL_INTAKE_MEDIA.some((media) => media.id === externalMediaId)) return false;
+  if (pullSource === "egi" && !egiEntitled) return false;
+  if (pullSource === "external" && !entitledExternalIds.includes(externalMediaId)) return false;
   if (pullSource === "article" && articleId.trim().length < 1) return false;
   return true;
 }

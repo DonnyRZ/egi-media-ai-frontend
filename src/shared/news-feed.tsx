@@ -1,7 +1,7 @@
 "use client";
 
 import { isAxiosError } from "axios";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
   useCallback,
   useDeferredValue,
@@ -13,17 +13,18 @@ import {
 import { ChevronLeft, ChevronRight, ExternalLink, Inbox, Newspaper, Search } from "lucide-react";
 
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
+import { fetchEntitledNewsChannels } from "@/shared/entitled-news-channels";
 import { axiosClient } from "@/shared/lib/axios-client";
 import {
   DEFAULT_NEWS_FEED_CHANNEL,
   NEWS_FEED_CHANNELS,
-  VISIBLE_NEWS_FEED_CHANNELS,
+  isNewsFeedChannelId,
   type NewsFeedChannelId,
 } from "@/shared/news-feed-channels";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
-import type { ApiSuccessResponse, NewsFeedItemDto, NewsFeedPageDto } from "@/shared/types/api.types";
+import type { ApiSuccessResponse, NewsFeedChannelDto, NewsFeedItemDto, NewsFeedPageDto } from "@/shared/types/api.types";
 import { BusyLabel, classifyApiError, StandardState } from "@/shared/ux-state";
 
 async function fetchNewsFeed(channel: NewsFeedChannelId, cursor?: string | null) {
@@ -59,17 +60,37 @@ function NewsFeedBody() {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
 
+  const channelsQuery = useQuery({
+    queryKey: ["news-feed-channels", companyId],
+    queryFn: fetchEntitledNewsChannels,
+    enabled: Boolean(companyId),
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const channels = channelsQuery.data ?? [];
+  const channelEntitled = channels.some((entry) => entry.id === channel);
+
+  useEffect(() => {
+    if (!channels.length) return;
+    if (!channelEntitled) {
+      const next = channels.find((entry) => isNewsFeedChannelId(entry.id));
+      if (next && isNewsFeedChannelId(next.id)) setChannel(next.id);
+    }
+  }, [channels, channelEntitled]);
+
   const query = useInfiniteQuery({
     queryKey: ["news-feed", companyId, channel],
     queryFn: ({ pageParam }) => fetchNewsFeed(channel, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-    enabled: Boolean(companyId),
+    enabled: Boolean(companyId) && channelEntitled,
     staleTime: 15_000,
     retry: 1,
   });
 
-  const activeMeta = NEWS_FEED_CHANNELS.find((entry) => entry.id === channel) ?? NEWS_FEED_CHANNELS[1];
+  const activeMeta = channels.find((entry) => entry.id === channel)
+    ?? NEWS_FEED_CHANNELS.find((entry) => entry.id === channel)
+    ?? NEWS_FEED_CHANNELS[1];
   const pages = query.data?.pages ?? [];
   const firstPage = pages[0];
   const layout = firstPage?.layout ?? activeMeta.layout;
@@ -88,7 +109,10 @@ function NewsFeedBody() {
   return (
     <div className="news-feed-page">
       <div className="page-context">
-        <span className="supporting-text">Browse multi-channel stories for this company scope.</span>
+        <div>
+          <h1 className="page-title">News Feed</h1>
+          <span className="supporting-text">Browse multi-channel stories for this company scope.</span>
+        </div>
         <span className="issues-scope-badge">Company scoped</span>
       </div>
 
@@ -104,16 +128,23 @@ function NewsFeedBody() {
         </label>
       </div>
 
-      <NewsFeedChannelTabs channel={channel} onSelect={selectChannel} busy={query.isFetching} />
+      <NewsFeedChannelTabs
+        channels={channels}
+        channel={channel}
+        onSelect={selectChannel}
+        busy={query.isFetching || channelsQuery.isFetching}
+      />
 
-      <div className="news-feed-meta" aria-busy={query.isFetching}>
+      <div className="news-feed-meta" aria-busy={query.isFetching || channelsQuery.isFetching}>
         <span>{label}</span>
         <span>{layout === "text" ? "Text list" : "Card layout"}</span>
-        {query.isFetching && !query.isLoading && <BusyLabel>Updating...</BusyLabel>}
+        {(query.isFetching || channelsQuery.isFetching) && !query.isLoading && !channelsQuery.isLoading && <BusyLabel>Updating...</BusyLabel>}
       </div>
 
-      {query.isLoading ? (
-        <NewsFeedLoading layout={layout} />
+      {channelsQuery.isError ? (
+        <NewsFeedError error={channelsQuery.error} onRetry={() => void channelsQuery.refetch()} />
+      ) : channelsQuery.isLoading || !channelEntitled || query.isLoading ? (
+        <NewsFeedLoading layout={layout === "text" ? "text" : "card"} />
       ) : query.isError ? (
         <NewsFeedError error={query.error} onRetry={() => query.refetch()} />
       ) : isUnavailable ? (
@@ -156,10 +187,12 @@ function NewsFeedBody() {
 }
 
 function NewsFeedChannelTabs({
+  channels,
   channel,
   onSelect,
   busy,
 }: {
+  channels: readonly NewsFeedChannelDto[];
   channel: NewsFeedChannelId;
   onSelect: (channel: NewsFeedChannelId) => void;
   busy: boolean;
@@ -179,7 +212,7 @@ function NewsFeedChannelTabs({
 
   useLayoutEffect(() => {
     updateOverflow();
-  }, [updateOverflow, channel]);
+  }, [updateOverflow, channel, channels]);
 
   useEffect(() => {
     const track = trackRef.current;
@@ -226,14 +259,16 @@ function NewsFeedChannelTabs({
         </button>
       ) : null}
       <div ref={trackRef} className="news-feed-tabs-track">
-      {VISIBLE_NEWS_FEED_CHANNELS.map((entry) => (
+      {channels.map((entry) => (
           <button
             key={entry.id}
             type="button"
             className={entry.id === channel ? "is-active" : undefined}
             data-channel={entry.id}
             aria-pressed={entry.id === channel}
-            onClick={() => onSelect(entry.id)}
+            onClick={() => {
+              if (isNewsFeedChannelId(entry.id)) onSelect(entry.id);
+            }}
           >
             {entry.label}
           </button>

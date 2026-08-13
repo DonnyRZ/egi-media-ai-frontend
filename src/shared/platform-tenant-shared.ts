@@ -1,10 +1,17 @@
 import { isAxiosError } from "axios";
 
+import type { NewsFeedChannelId } from "@/shared/news-feed-channels";
+
 export type TenantStatus = "pending" | "active" | "suspended" | "archived";
 export type Tenant = {
   tenant_id: string;
   name: string;
   status: TenantStatus;
+  legal_name?: string | null;
+  timezone?: string;
+  default_locale?: string;
+  metadata?: { allowed_news_channel_ids?: NewsFeedChannelId[] };
+  allowed_news_channel_ids?: NewsFeedChannelId[];
   created_at?: string;
   updated_at?: string;
 };

@@ -5,7 +5,7 @@ import test from "node:test";
 
 test("frontend endpoint registry stays within the implemented read/write contract", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/shared/constants/api.constants.ts"), "utf8");
-  for (const endpoint of ["executiveSummary", "newsFeed", "issues", "issueById", "articleSource", "issueComplete", "companyContext", "companyContextDraft", "companies", "savedIssues", "issueSaved", "inboxEmails", "inboxEmailRead", "alertPreference", "alertPreferenceRead", "languagePreference", "languagePreferenceRead", "newsIntakeStatus", "newsIntakeAutomatic", "newsIntakePull", "newsIntakeRuns", "reports", "reportById", "reportReview", "reportApprove", "reportShare"]) assert.match(source, new RegExp(`\\b${endpoint}\\b`));
+  for (const endpoint of ["executiveSummary", "newsFeed", "newsFeedChannels", "issues", "issueById", "articleSource", "issueComplete", "companyContext", "companyContextDraft", "companies", "savedIssues", "issueSaved", "inboxEmails", "inboxEmailRead", "alertPreference", "alertPreferenceRead", "languagePreference", "languagePreferenceRead", "newsIntakeStatus", "newsIntakeAutomatic", "newsIntakePull", "newsIntakeRuns", "reports", "reportById", "reportReview", "reportApprove", "reportShare"]) assert.match(source, new RegExp(`\\b${endpoint}\\b`));
 });
 
 test("news feed channel registry matches locked F0 order (19 tabs)", () => {

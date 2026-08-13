@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { VISIBLE_NEWS_FEED_CHANNEL_FIXTURES } from "./support/news-feed-channels.mjs";
 
 const COMPANY = { company_id: "company-a", tenant_id: "tenant-a", name: "Company A", status: "active" };
 const EXECUTIVE_PERMISSIONS = [
@@ -121,6 +122,8 @@ async function seedRole(page, role, permissions) {
         issues: [],
         top5_limit: 20,
       };
+    } else if (path === "/api/v1/news-feed/channels") {
+      data = { items: VISIBLE_NEWS_FEED_CHANNEL_FIXTURES };
     } else if (path === "/api/v1/news-feed") {
       data = {
         channel: requestUrl.searchParams.get("channel") || "egi_media",

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { VISIBLE_NEWS_FEED_CHANNEL_FIXTURES } from "./support/news-feed-channels.mjs";
 
 const COMPANY = { company_id: "company-a", tenant_id: "tenant-a", name: "Company A", status: "active" };
 const ANALYST_PERMISSIONS = [
@@ -78,6 +79,7 @@ async function seedRole(page, role, permissions, reportStatus) {
     if (path.endsWith("/auth/session")) data = sessionData;
     else if (path === "/api/v1/companies") data = { items: [COMPANY] };
     else if (path === "/api/v1/dashboard/executive-summary") data = { period: "24jam", startAt: "2026-08-01T00:00:00Z", endAt: "2026-08-02T00:00:00Z", items: [], issues: [], top5_limit: 20 };
+    else if (path === "/api/v1/news-feed/channels") data = { items: VISIBLE_NEWS_FEED_CHANNEL_FIXTURES };
     else if (path === "/api/v1/news-feed") data = { channel: "egi_media", label: "EGI Media", layout: "card", provider: "cms", items: [], next_cursor: null };
     else if (path === "/api/v1/inbox/emails") data = { items: [], meta: { page: 1, limit: 50, total: 0 } };
     else if (path === "/api/v1/companies/company-a/context") data = context;

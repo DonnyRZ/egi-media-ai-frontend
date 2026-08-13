@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import { AppSelect } from "@/shared/app-select";
 import { axiosClient } from "@/shared/lib/axios-client";
+import { CredentialPasswordFields } from "@/shared/credential-password-fields";
 import { ScopeRequired } from "@/shared/prerequisite-gate";
 import { useSessionStore } from "@/shared/session-store";
 import { useWorkspaceScope } from "@/shared/workspace-scope";
@@ -42,8 +43,8 @@ function apiMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function memberLabel(userId: string) {
-  return userId.replace(/^user:/, "");
+function memberLabel(item: MembershipDto) {
+  return item.full_name || item.email || item.user_id.replace(/^user:/, "");
 }
 
 function formatRole(role: string) {
@@ -66,9 +67,13 @@ export function AccessManagement() {
   const membershipQueryKey = isCompanyScoped ? ["company-memberships", activeCompanyId] : ["tenant-memberships"];
   const membershipCollectionEndpoint = isCompanyScoped ? API_ENDPOINTS.companyMemberships : API_ENDPOINTS.tenantMemberships;
   const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState<CustomerRole>("analyst");
   const [companyId, setCompanyId] = useState("");
   const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<CustomerRole>("analyst");
@@ -127,19 +132,23 @@ export function AccessManagement() {
       (
         await axiosClient.post<ApiSuccessResponse<{ membership: MembershipDto; reused: boolean }>>(
           membershipCollectionEndpoint,
-          { email: email.trim(), role, ...(isCompanyScoped ? {} : { company_id: companyId || null }) },
+          { email: email.trim(), full_name: fullName.trim(), password, role, ...(isCompanyScoped ? {} : { company_id: companyId || null }) },
           { headers: { "Idempotency-Key": idempotency("invite") } },
         )
       ).data,
     onSuccess: (result) => {
       setEmail("");
+      setFullName("");
+      setPassword("");
+      setConfirmPassword("");
       setCompanyId("");
       setRole("analyst");
       setEmailError("");
-      setNotice({ kind: "success", text: result.data.reused ? "Access already existed; invitation details updated." : "Invitation created." });
+      setPasswordError("");
+      setNotice({ kind: "success", text: result.data.reused ? "Access added to an existing account." : "Member created. They can sign in with this email and the password you set." });
       void queryClient.invalidateQueries({ queryKey: membershipQueryKey });
     },
-    onError: (error) => setNotice({ kind: "error", text: apiMessage(error, "Invitation could not be created.") }),
+    onError: (error) => setNotice({ kind: "error", text: apiMessage(error, "Member could not be created.") }),
   });
 
   const update = useMutation({
@@ -182,7 +191,26 @@ export function AccessManagement() {
       setNotice(null);
       return;
     }
+    if (!fullName.trim()) {
+      setEmailError("");
+      setPasswordError("Enter a full name.");
+      setNotice(null);
+      return;
+    }
+    if (password.length < 8) {
+      setEmailError("");
+      setPasswordError("Password must be at least 8 characters.");
+      setNotice(null);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setEmailError("");
+      setPasswordError("Passwords do not match.");
+      setNotice(null);
+      return;
+    }
     setEmailError("");
+    setPasswordError("");
     setNotice(null);
     invite.mutate();
   }
@@ -230,11 +258,21 @@ export function AccessManagement() {
           <section className="access-invite-panel" aria-labelledby="invite-heading">
             <div className="access-section-heading">
               <div>
-                <span className="context-label">{isCompanyScoped ? "Add a company member" : "Add a member"}</span>
-                <h2 id="invite-heading">Invite access</h2>
+                <span className="context-label">{isCompanyScoped ? "Add a company member" : "Add a workspace member"}</span>
+                <h2 id="invite-heading">Create member</h2>
               </div>
             </div>
             <form className="access-form access-form-redesign" onSubmit={submitInvite} noValidate>
+              <label>
+                <span>Full name</span>
+                <input
+                  aria-label="Full name"
+                  autoComplete="name"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  placeholder="Full name"
+                />
+              </label>
               <label>
                 <span>Work email</span>
                 <input
@@ -251,6 +289,23 @@ export function AccessManagement() {
                 />
                 {emailError && <small id="access-email-error" className="access-field-error">{emailError}</small>}
               </label>
+              <div className="access-credentials">
+                <CredentialPasswordFields
+                  idPrefix="member"
+                  password={password}
+                  confirmPassword={confirmPassword}
+                  onPasswordChange={(value) => {
+                    setPassword(value);
+                    setPasswordError("");
+                  }}
+                  onConfirmChange={(value) => {
+                    setConfirmPassword(value);
+                    setPasswordError("");
+                  }}
+                  passwordError={passwordError}
+                  helper="They can sign in immediately. You will need to share this password."
+                />
+              </div>
               <label>
                 <span>Role</span>
                 <AppSelect aria-label="Role" value={role} options={roles.map((item) => ({ value: item, label: roleLabels[item] }))} onChange={setRole} />
@@ -264,8 +319,8 @@ export function AccessManagement() {
                   onChange={setCompanyId}
                 />
               </label>}
-              <button className="context-action" type="submit" disabled={invite.isPending || !email.trim()} aria-busy={invite.isPending} data-loading={invite.isPending}>
-                {invite.isPending ? "Inviting..." : "Invite member"}
+              <button className="context-action" type="submit" disabled={invite.isPending || !email.trim() || !fullName.trim() || password.length < 8} aria-busy={invite.isPending} data-loading={invite.isPending}>
+                {invite.isPending ? "Creating..." : "Create member"}
               </button>
             </form>
           </section>
@@ -288,7 +343,7 @@ export function AccessManagement() {
             )}
             <div className="access-member-list">
               {membershipItems.map((item) => {
-                const label = memberLabel(item.user_id);
+                const label = memberLabel(item);
                 const isSelf = item.user_id === actor?.id || item.user_id === `user:${actor?.email}`;
                 const canEdit = roles.some((option) => option === item.role);
                 return (
@@ -298,7 +353,7 @@ export function AccessManagement() {
                         <strong>{label}</strong>
                         {isSelf && <span className="access-self-badge">You</span>}
                       </div>
-                      <span>{formatRole(item.role)} · {displayCompany(item.company_id)}</span>
+                      <span>{formatRole(item.role)} · {displayCompany(item.company_id)}{item.email && item.full_name ? ` · ${item.email}` : ""}</span>
                     </div>
                     <div className="access-member-actions">
                       <span className={`context-status-badge ${item.status !== "active" ? "is-inactive" : ""}`}>{item.status}</span>
@@ -398,7 +453,7 @@ function RevokeAccessDialog({
       <div ref={dialogRef} className="context-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="revoke-access-title" onClick={(event) => event.stopPropagation()}>
         <span className="context-delete-dialog-icon"><ShieldOff size={18} aria-hidden="true" /></span>
         <h2 id="revoke-access-title">Revoke access?</h2>
-        <p>{memberLabel(member.user_id)} will lose {formatRole(member.role)} access to {companyLabel}.</p>
+        <p>{memberLabel(member)} will lose {formatRole(member.role)} access to {companyLabel}.</p>
         <div className="context-delete-dialog-actions">
           <button className="context-action context-action-secondary" type="button" disabled={busy} onClick={onClose}>Cancel</button>
           <button className="context-action context-action-danger" type="button" disabled={busy} aria-busy={busy} data-loading={busy} onClick={onConfirm}>{busy ? "Revoking..." : "Revoke access"}</button>

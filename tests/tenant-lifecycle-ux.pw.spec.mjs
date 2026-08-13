@@ -44,6 +44,8 @@ test.describe("platform workspace lifecycle UX", () => {
     await suspendDialog.getByRole("button", { name: "Suspend workspace" }).click();
     await expect(page.getByText("Provisioning paused", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Company name")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Edit sources" })).toHaveCount(0);
+    await expect(page.getByText("News source changes are paused")).toBeVisible();
     await expect(page.getByRole("button", { name: "Archive workspace" })).toBeVisible();
 
     await page.getByRole("link", { name: "← Workspace registry" }).click();

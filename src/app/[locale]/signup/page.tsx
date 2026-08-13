@@ -1,3 +1,5 @@
-import { SignupScreen } from "@/shared/signup-screen";
+import { redirect } from "@/i18n/navigation";
 
-export default function SignupPage() { return <SignupScreen />; }
+export default function SignupPage() {
+  redirect("/login");
+}

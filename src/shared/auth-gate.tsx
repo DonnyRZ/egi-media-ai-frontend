@@ -10,7 +10,7 @@ import { API_ENDPOINTS } from "@/shared/constants/api.constants";
 import type { ApiSuccessResponse, AuthSessionDto, CompanyOptionDto } from "@/shared/types/api.types";
 import { toCompanyOptionsFromLogin } from "@/shared/company-options";
 
-const PUBLIC_PATHS = new Set(["/login", "/signup"]);
+const PUBLIC_PATHS = new Set(["/login"]);
 
 function sessionCompanies(session: AuthSessionDto): CompanyOptionDto[] {
   const raw = session.authorized_companies;

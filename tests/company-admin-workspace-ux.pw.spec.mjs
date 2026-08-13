@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { VISIBLE_NEWS_FEED_CHANNEL_FIXTURES } from "./support/news-feed-channels.mjs";
 
 const COMPANY_ADMIN_PERMISSIONS = [
   "dashboard.read", "issue.read", "issue.complete", "issue.save",
@@ -51,7 +52,7 @@ test("company admin manages only members in the active company", async ({ page }
     }
     const body = route.request().postDataJSON();
     requests.push({ method: route.request().method(), body, endpoint: new URL(route.request().url()).pathname });
-    const created = { membership_id: "membership-reviewer", user_id: `user:${body.email}`, tenant_id: "tenant-a", company_id: "company-a", role: body.role, status: "invited", version: 1 };
+    const created = { membership_id: "membership-reviewer", user_id: `user:${body.email}`, tenant_id: "tenant-a", company_id: "company-a", role: body.role, status: "active", version: 1, email: body.email, full_name: body.full_name };
     members = [...members, created];
     return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ success: true, data: { membership: created, reused: false }, meta: { request_id: "company-admin-ux" } }) });
   });
@@ -72,7 +73,7 @@ test("company admin manages only members in the active company", async ({ page }
   });
 
   await page.goto("/id/settings/access");
-  await expect(page.getByRole("banner").getByRole("heading", { name: "Access", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create member" })).toBeVisible();
   await expect(page.getByText("Company administration")).toBeVisible();
   await expect(page.getByRole("main").getByText("Company A", { exact: true })).toBeVisible();
   await expect(page.getByText("other@example.com")).toHaveCount(0);
@@ -86,12 +87,15 @@ test("company admin manages only members in the active company", async ({ page }
   await page.keyboard.press("Escape");
   await expect(page).toHaveScreenshot("company-admin-access-initial.png", { fullPage: true });
 
+  await page.getByLabel("Full name").fill("Company Reviewer");
   await page.getByLabel("Work email").fill("reviewer@example.com");
+  await page.getByLabel("Password", { exact: true }).fill("MemberPass123!");
+  await page.getByLabel("Confirm password").fill("MemberPass123!");
   await roleSelect.click();
   await page.getByRole("option", { name: "Reviewer", exact: true }).click();
-  await page.getByRole("button", { name: "Invite member" }).click();
-  await expect(page.getByRole("status")).toContainText("Invitation created");
-  expect(requests[0]).toMatchObject({ method: "POST", endpoint: "/api/v1/company/memberships", body: { email: "reviewer@example.com", role: "reviewer" } });
+  await page.getByRole("button", { name: "Create member" }).click();
+  await expect(page.getByRole("status")).toContainText("Member created");
+  expect(requests[0]).toMatchObject({ method: "POST", endpoint: "/api/v1/company/memberships", body: { email: "reviewer@example.com", full_name: "Company Reviewer", password: "MemberPass123!", role: "reviewer" } });
   expect(requests[0].body).not.toHaveProperty("company_id");
   await expect(page.getByText("reviewer@example.com")).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -197,6 +201,7 @@ test("company admin can reach every assigned workspace surface", async ({ page }
     if (path.endsWith("/auth/session")) data = sessionData;
     else if (path === "/api/v1/companies") data = { items: [COMPANY] };
     else if (path === "/api/v1/dashboard/executive-summary") data = { period: "24jam", startAt: "2026-08-01T00:00:00Z", endAt: "2026-08-02T00:00:00Z", items: [], issues: [], top5_limit: 20 };
+    else if (path === "/api/v1/news-feed/channels") data = { items: VISIBLE_NEWS_FEED_CHANNEL_FIXTURES };
     else if (path === "/api/v1/news-feed") data = { channel: requestUrl.searchParams.get("channel") || "egi_media", label: "EGI Media", layout: "card", provider: "cms", items: [], next_cursor: null };
     else if (path === "/api/v1/companies/company-a/context") data = context;
     else if (path === "/api/v1/companies/company-a/context/versions") data = { items: [context], meta: { total: 1 } };

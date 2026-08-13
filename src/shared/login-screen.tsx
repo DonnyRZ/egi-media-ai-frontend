@@ -3,7 +3,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { ArrowRight, Eye, EyeOff, Info } from "lucide-react";
-import { useRouter } from "@/i18n/navigation";
 import { useSessionStore } from "@/shared/session-store";
 import { axiosClient } from "@/shared/lib/axios-client";
 import { API_ENDPOINTS } from "@/shared/constants/api.constants";
@@ -17,7 +16,6 @@ function goToWorkspaceHome() {
 }
 
 export function LoginScreen() {
-  const router = useRouter();
   const accessToken = useSessionStore((state) => state.accessToken);
   const isHydrated = useSessionStore((state) => state.isHydrated);
   const hydrate = useSessionStore((state) => state.hydrate);
@@ -145,14 +143,11 @@ export function LoginScreen() {
                 {isSubmitting ? "Signing in..." : "Continue to workspace"}
                 <span><ArrowRight size={16} strokeWidth={2} aria-hidden="true" /></span>
               </button>
-              <button className="login-secondary-button" type="button" onClick={() => router.push("/signup")}>
-                Create a new account
-              </button>
             </div>
           </form>
           <div className="login-note">
             <span><Info size={12} strokeWidth={2} aria-hidden="true" /></span>
-            <p>Workspace access is controlled by tenant membership. Signup alone does not grant company data access.</p>
+            <p>Ask your administrator to create an account. Sign in with the email and password they set.</p>
           </div>
         </div>
       </section>
